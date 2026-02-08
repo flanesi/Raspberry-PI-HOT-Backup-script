@@ -1,0 +1,1548 @@
+================================================================================
+                    GUIDA COMPLETA BACKUP RASPBERRY PI
+================================================================================
+
+INDICE
+------
+1. Introduzione
+   ★ Backup "a caldo" - senza spegnere il sistema
+   ★ Auto-espansione automatica - cambia SD facilmente
+2. Cosa fa system_backup.sh
+3. Cosa fa pishrink.sh
+4. Requisiti di sistema
+5. Installazione
+6. Configurazione del NAS
+7. Utilizzo di system_backup.sh
+8. Utilizzo di pishrink.sh
+9. Automazione con Cron
+10. Risoluzione problemi
+11. Domande frequenti (FAQ)
+12. Esempi pratici completi
+13. Best practices
+
+================================================================================
+1. INTRODUZIONE
+================================================================================
+
+Questa guida spiega come eseguire backup completi e automatici della scheda SD
+del tuo Raspberry Pi su un NAS di rete o disco USB esterno.
+
+*** CARATTERISTICA FONDAMENTALE: BACKUP "A CALDO" ***
+
+Questo sistema permette di creare backup COMPLETI della scheda SD del Raspberry
+Pi MENTRE IL SISTEMA È IN FUNZIONE, senza necessità di spegnere il dispositivo
+o rimuovere fisicamente la scheda SD.
+
+VANTAGGI DEL BACKUP "A CALDO":
+✓ Nessuna interruzione del servizio - Il Raspberry Pi continua a funzionare
+✓ Nessun tempo di inattività - Ideale per server e sistemi in produzione
+✓ Backup automatizzabili durante la notte - Senza intervento manuale
+✓ Non serve accesso fisico al dispositivo - Perfetto per Pi in posizioni remote
+✓ Il sistema rimane utilizzabile durante tutto il processo di backup
+
+COME FUNZIONA IL BACKUP A CALDO:
+Il sistema copia la scheda SD direttamente da /dev/mmcblk0 (il device della SD)
+mentre il sistema operativo è in esecuzione. Questa tecnica è sicura perché:
+• Il filesystem viene marcato per controllo al prossimo boot (se necessario)
+• La copia è consistente grazie ai meccanismi del kernel Linux
+• L'immagine creata è completamente ripristinabile e funzionante
+
+IMPORTANTE: Anche se il backup viene fatto "a caldo", l'immagine risultante è
+completamente funzionante e ripristinabile. Al primo avvio dopo il ripristino,
+eventuali inconsistenze minori vengono corrette automaticamente dal sistema.
+
+================================================================================
+★★★ CARATTERISTICA FONDAMENTALE: AUTO-ESPANSIONE AUTOMATICA ★★★
+================================================================================
+
+Quando ripristini un backup ridotto con pishrink, al PRIMO AVVIO il sistema
+si espande AUTOMATICAMENTE per occupare tutto lo spazio disponibile sulla SD.
+
+QUESTO È ESTREMAMENTE UTILE PERCHÉ:
+✓ Puoi ripristinare backup su SD card di dimensioni DIVERSE
+✓ Passare da SD 16GB a 32GB o 64GB è SEMPLICISSIMO
+✓ Il sistema si adatta AUTOMATICAMENTE alla nuova dimensione
+✓ NESSUNA configurazione manuale necessaria!
+✓ Funziona anche tornando a SD più GRANDI dopo un downgrade temporaneo
+
+ESEMPIO PRATICO - UPGRADE A SD PIÙ GRANDE:
+──────────────────────────────────────────
+1. Situazione iniziale: Raspberry Pi con SD da 16GB
+2. Crei backup con system_backup → Immagine ridotta a 3.5GB
+3. Compri una SD nuova da 32GB (o 64GB, 128GB...)
+4. Ripristini il backup da 3.5GB sulla nuova SD da 32GB
+5. Inserisci la SD nel Raspberry Pi e accendi
+6. ★ PRIMO BOOT: Il sistema si espande automaticamente a 32GB ★
+7. Dopo il riavvio automatico: Hai 28.5GB di spazio in più!
+
+ESEMPIO PRATICO - RIPRISTINO SU SD IDENTICA:
+────────────────────────────────────────────
+1. SD card originale da 16GB si rompe
+2. Compri una SD nuova identica da 16GB
+3. Ripristini l'ultimo backup (ridotto a 3.5GB)
+4. Al primo boot si espande automaticamente a 16GB
+5. Sistema identico a prima del guasto!
+
+COME FUNZIONA TECNICAMENTE:
+───────────────────────────
+Durante il processo di riduzione, pishrink:
+1. Riduce il filesystem e la partizione al minimo necessario
+2. Modifica il file /etc/rc.local nell'immagine
+3. Aggiunge uno script che al primo boot:
+   • Rileva la dimensione REALE della SD card inserita
+   • Espande la partizione root per usare TUTTO lo spazio disponibile
+   • Espande il filesystem alla nuova dimensione della partizione
+   • Riavvia automaticamente il sistema
+   • Ripristina /etc/rc.local allo stato originale
+4. Al secondo boot: Sistema completamente espanso e pronto!
+
+PROCESSO VISIVO:
+────────────────
+
+BACKUP ORIGINALE (SD 16GB):
+┌────────────────────────────────────────────────────────┐
+│ Boot │ Root Filesystem (usato 3GB) │ Spazio Vuoto 12GB │
+│ 256M │           3GB               │       12GB        │
+└────────────────────────────────────────────────────────┘
+Dimensione file backup: 16GB
+
+DOPO PISHRINK:
+┌──────────────────────────┐
+│ Boot │ Root + margine    │
+│ 256M │     3.2GB         │
+└──────────────────────────┘
+Dimensione file backup: 3.5GB
+
+RIPRISTINO SU SD 32GB - PRIMO BOOT:
+┌──────────────────────────┬──────────────────────────────┐
+│ Boot │ Root (3.2GB)      │    Spazio non allocato       │
+│ 256M │     3.2GB         │          28.5GB              │
+└──────────────────────────┴──────────────────────────────┘
+★ Script auto-espansione in esecuzione... ★
+
+DOPO AUTO-ESPANSIONE - SECONDO BOOT:
+┌──────────────────────────────────────────────────────────┐
+│ Boot │         Root Filesystem (espanso)                 │
+│ 256M │                   31.7GB                          │
+└──────────────────────────────────────────────────────────┘
+✓ Sistema pronto con tutta la SD disponibile!
+
+NOTA IMPORTANTE:
+Se NON vuoi l'auto-espansione (ad esempio per creare immagini master da
+distribuire su SD di dimensione fissa), usa pishrink con l'opzione -s:
+  sudo pishrink -s /percorso/backup.img
+
+Senza auto-espansione, il sistema rimarrà della dimensione ridotta anche
+su SD più grandi (puoi espandere manualmente dopo se necessario).
+
+================================================================================
+
+Il sistema è composto da DUE script:
+
+• system_backup.sh  → Crea il backup completo della SD (A CALDO)
+• pishrink.sh       → Riduce le dimensioni dell'immagine di backup
+
+VANTAGGI COMPLESSIVI:
+✓ Backup completo del sistema (byte per byte) SENZA SPEGNERE IL RASPBERRY PI
+✓ Immagini ripristinabili direttamente con Raspberry Pi Imager o dd
+✓ Riduzione automatica dimensioni (da ~16GB a ~3-4GB)
+✓ Gestione automatica dei backup vecchi (retention)
+✓ Controlli di sicurezza per evitare perdita dati
+✓ Nessuna interruzione del sistema durante il backup
+✓ Automatizzabile completamente con cron per backup notturni
+
+================================================================================
+2. COSA FA SYSTEM_BACKUP.SH
+================================================================================
+
+DESCRIZIONE
+-----------
+system_backup.sh crea una copia esatta (immagine) dell'intera scheda SD del
+Raspberry Pi e la salva su una destinazione specificata (NAS, USB, ecc.).
+
+*** BACKUP "A CALDO" - SISTEMA IN FUNZIONE ***
+
+Questo script esegue il backup MENTRE IL RASPBERRY PI È ACCESO E IN FUNZIONE.
+Non è necessario:
+✗ Spegnere il Raspberry Pi
+✗ Rimuovere fisicamente la scheda SD
+✗ Interrompere i servizi in esecuzione
+✗ Disconnettere utenti o applicazioni
+
+Il backup viene eseguito direttamente dal device /dev/mmcblk0 mentre il sistema
+operativo è attivo. Questo è possibile perché Linux gestisce correttamente la
+lettura concorrente del device della SD card.
+
+SICUREZZA DEL BACKUP A CALDO:
+• Il flag /boot/forcefsck viene creato prima del backup
+• Questo flag forza un controllo filesystem (fsck) al primo boot dell'immagine
+• Il controllo fsck corregge eventuali inconsistenze minori automaticamente
+• Il risultato è un'immagine COMPLETAMENTE FUNZIONANTE e ripristinabile
+
+CASO D'USO IDEALE:
+Perfetto per Raspberry Pi che operano come:
+• Server web in produzione
+• Sistemi di home automation (domotica)
+• NAS personali
+• Media center sempre accesi
+• Sistemi di monitoraggio continuo
+• Qualsiasi applicazione che non può permettersi tempi di inattività
+
+FUNZIONAMENTO DETTAGLIATO
+--------------------------
+1. CONTROLLI PRELIMINARI
+   • Verifica privilegi root (necessari per accedere a /dev/mmcblk0)
+   • Controlla che la destinazione sia un mount point attivo
+   • Rileva dimensione SD card sorgente
+   • Verifica spazio disco disponibile sulla destinazione
+   • Confronta: spazio disponibile deve essere >= dimensione SD
+   • Avvisa se spazio < 2x dimensione SD (per retention multipli)
+   • Testa scrittura sulla destinazione
+   • Lista i backup esistenti
+
+2. CREAZIONE BACKUP
+   • Usa il comando 'dd' per copiare bit per bit la SD card
+   • Comando eseguito: dd if=/dev/mmcblk0 of=/percorso/backup.img bs=1M
+   • Mostra progresso in tempo reale
+   • Crea file con nome: HOSTNAME.YYYYmmdd_HHMMSS.img
+     Esempio: raspberry-pi.20250208_143022.img
+
+3. VERIFICA BACKUP
+   • Controlla che il file sia stato creato
+   • Verifica dimensioni minime (almeno 500MB)
+   • Esegue sync per assicurare scrittura su disco
+
+4. GESTIONE RETENTION
+   • Cerca backup più vecchi del periodo di retention
+   • Lista i file da cancellare
+   • Verifica che rimarrà almeno 1 backup
+   • Cancella i file vecchi in modo sicuro
+
+5. RIDUZIONE DIMENSIONI (opzionale)
+   • Se pishrink è installato, riduce l'immagine
+   • Rimuove spazio vuoto mantenendo tutti i dati
+   • Risparmio tipico: 60-80% dello spazio
+
+CARATTERISTICHE DI SICUREZZA
+-----------------------------
+✓ Verifica che la destinazione sia un mount point (previene cancellazioni)
+✓ Verifica dimensione SD card e confronta con spazio disponibile
+✓ Non cancella mai backup se quello nuovo è sospettosamente piccolo
+✓ Usa -maxdepth 1 in find per evitare ricorsioni indesiderate
+✓ Controlla sempre che rimanga almeno 1 backup
+✓ Quote su tutte le variabili per prevenire espansioni pericolose
+✓ Gestione errori robusta con exit code appropriati
+
+PARAMETRI
+---------
+$1 = backup_path     → Percorso dove salvare (default: /mnt/backup)
+$2 = retention_days  → Giorni da mantenere (default: 3)
+
+VALORI DI DEFAULT
+-----------------
+backup_path      = /mnt/backup
+retention_days   = 3 giorni
+resize           = 1 (abilitato)
+MIN_EXPECTED     = 0 (per il primo backup)
+
+DIMENSIONI TIPICHE
+------------------
+• SD Card 16GB → Immagine iniziale ~16GB
+• Dopo pishrink → ~3-4GB (dipende da quanto è pieno il sistema)
+• SD Card 32GB → Immagine iniziale ~32GB
+• Dopo pishrink → ~5-8GB (dipende da quanto è pieno il sistema)
+
+TEMPO NECESSARIO
+----------------
+• Backup (dd): ~10-15 minuti per 16GB SD card
+• Resize (pishrink): ~3-5 minuti
+• Totale: ~15-20 minuti per backup completo
+
+================================================================================
+3. COSA FA PISHRINK.SH
+================================================================================
+
+DESCRIZIONE
+-----------
+pishrink.sh riduce le dimensioni di un'immagine Raspberry Pi eliminando lo
+spazio vuoto inutilizzato, rendendo i backup molto più piccoli e veloci da
+trasferire.
+
+FUNZIONAMENTO DETTAGLIATO
+--------------------------
+1. ANALISI FILESYSTEM
+   • Legge la struttura delle partizioni nell'immagine
+   • Identifica la partizione root (ext4)
+   • Controlla integrità filesystem con e2fsck
+
+2. RIDIMENSIONAMENTO FILESYSTEM
+   • Calcola lo spazio minimo necessario con resize2fs -P
+   • Aggiunge un margine di sicurezza (100-5000 blocchi)
+   • Riduce il filesystem alla dimensione minima + margine
+
+3. RIDIMENSIONAMENTO PARTIZIONE
+   • Usa parted per ridurre la partizione
+   • Adatta le dimensioni al nuovo filesystem ridotto
+
+4. TRUNCATE IMMAGINE
+   • Taglia il file immagine alla nuova dimensione
+   • Rimuove tutto lo spazio vuoto alla fine
+
+5. AUTO-ESPANSIONE (opzionale)
+   • Modifica /etc/rc.local nell'immagine
+   • Al primo boot, la partizione si espande automaticamente
+   • Il sistema torna alle dimensioni originali della SD
+
+OPZIONI DISPONIBILI
+-------------------
+-s  → Salta auto-espansione al primo boot
+-v  → Output verboso
+-r  → Usa riparazione filesystem avanzata se fallisce quella normale
+-z  → Comprimi con gzip dopo riduzione
+-Z  → Comprimi con xz dopo riduzione
+-a  → Compressione parallela (multi-core)
+-d  → Debug mode con log dettagliato
+
+ESEMPI D'USO PISHRINK
+----------------------
+# Riduzione base
+sudo pishrink /mnt/backup/raspberry-pi.20250208.img
+
+# Riduzione con compressione gzip
+sudo pishrink -z /mnt/backup/raspberry-pi.20250208.img
+
+# Riduzione verbose per vedere cosa fa
+sudo pishrink -v /mnt/backup/raspberry-pi.20250208.img
+
+# Crea una nuova immagine ridotta (originale intatto)
+sudo pishrink /mnt/backup/originale.img /mnt/backup/ridotto.img
+
+COME FUNZIONA IL RESIZE
+------------------------
+PRIMA:
+┌─────────────────────────────────────────────┐
+│ Boot │ Root Filesystem │   Spazio Vuoto    │
+│ 256M │      3.5GB      │      11.5GB       │
+└─────────────────────────────────────────────┘
+Dimensione file: 16GB
+
+DOPO:
+┌──────────────────────┐
+│ Boot │ Root + Margine │
+│ 256M │     3.7GB      │
+└──────────────────────┘
+Dimensione file: 4GB
+
+VANTAGGI
+--------
+✓ Risparmio spazio 60-80%
+✓ Backup più veloci da trasferire
+✓ Meno banda di rete utilizzata
+✓ Più backup possono stare sul NAS
+✓ Ripristino più veloce
+
+QUANDO NON USARE PISHRINK
+--------------------------
+✗ Se la SD è quasi completamente piena (poco guadagno)
+✗ Se hai filesystem non ext4 nella root
+✗ Se usi partizioni logiche LVM complesse
+✗ Durante il backup se vuoi velocità massima (esegui dopo)
+
+================================================================================
+4. REQUISITI DI SISTEMA
+================================================================================
+
+RASPBERRY PI
+------------
+• Raspberry Pi (tutti i modelli)
+• Raspbian/Raspberry Pi OS (o altra distro Debian-based)
+• Accesso root (sudo)
+• Connessione di rete (per backup su NAS)
+
+SOFTWARE NECESSARIO
+-------------------
+system_backup.sh richiede:
+  ✓ dd (preinstallato)
+  ✓ find (preinstallato)
+  ✓ stat (preinstallato)
+  ✓ sync (preinstallato)
+  ✓ mountpoint (preinstallato)
+  ✓ timeout (preinstallato)
+
+pishrink.sh richiede:
+  ✓ parted
+  ✓ losetup
+  ✓ tune2fs
+  ✓ md5sum
+  ✓ e2fsck
+  ✓ resize2fs
+
+Installa i tool mancanti:
+sudo apt-get update
+sudo apt-get install parted e2fsprogs
+
+DESTINAZIONE BACKUP
+-------------------
+• NAS con NFS, SMB/CIFS, o altro protocollo di rete
+• Disco USB esterno
+• Altro disco locale
+• Spazio libero: almeno 2-3 volte la dimensione della SD card
+
+SPAZIO NECESSARIO (esempio SD 16GB)
+------------------------------------
+• Senza resize: ~16GB per backup
+• Con resize: ~4GB per backup
+• Con retention 7 giorni: ~28GB totali (7 × 4GB)
+• Raccomandato: almeno 50GB sul NAS per sicurezza
+
+================================================================================
+5. INSTALLAZIONE
+================================================================================
+
+PASSO 1: PREPARAZIONE DIRECTORY
+--------------------------------
+# Crea la directory degli script
+sudo mkdir -p /var/www/MyScripts
+
+# Entra nella directory
+cd /var/www/MyScripts
+
+PASSO 2: COPIA GLI SCRIPT
+--------------------------
+# Copia system_backup.sh e pishrink.sh in /var/www/MyScripts
+# (usa scp, sftp, o copia manualmente)
+
+# Esempio con scp da un altro computer:
+scp system_backup_simple.sh pi@raspberry-pi:/home/pi/
+scp pishrink.sh pi@raspberry-pi:/home/pi/
+
+# Sul Raspberry, sposta nella directory corretta:
+sudo mv /home/pi/system_backup_simple.sh /var/www/MyScripts/system_backup.sh
+sudo mv /home/pi/pishrink.sh /var/www/MyScripts/pishrink.sh
+
+PASSO 3: IMPOSTA PERMESSI
+--------------------------
+# Rendi gli script eseguibili
+sudo chmod +x /var/www/MyScripts/system_backup.sh
+sudo chmod +x /var/www/MyScripts/pishrink.sh
+
+PASSO 4: CREA LINK SIMBOLICI
+-----------------------------
+# Crea link in /usr/local/bin per esecuzione facile
+sudo ln -s /var/www/MyScripts/system_backup.sh /usr/local/bin/system_backup
+sudo ln -s /var/www/MyScripts/pishrink.sh /usr/local/bin/pishrink
+
+PASSO 5: VERIFICA INSTALLAZIONE
+--------------------------------
+# Verifica che i comandi siano disponibili
+which system_backup
+# Dovrebbe mostrare: /usr/local/bin/system_backup
+
+which pishrink
+# Dovrebbe mostrare: /usr/local/bin/pishrink
+
+# Test sintassi (non esegue backup)
+bash -n /var/www/MyScripts/system_backup.sh
+# Nessun output = OK
+
+INSTALLAZIONE COMPLETATA!
+--------------------------
+Ora puoi usare i comandi:
+  sudo system_backup
+  sudo pishrink
+
+================================================================================
+6. CONFIGURAZIONE DEL NAS
+================================================================================
+
+MONTAGGIO NAS - OPZIONE A: NFS
+-------------------------------
+# 1. Installa client NFS
+sudo apt-get install nfs-common
+
+# 2. Crea punto di mount
+sudo mkdir -p /mnt/backup
+
+# 3. Mount manuale (per test)
+sudo mount -t nfs NAS_IP:/percorso/condiviso /mnt/backup
+
+# Esempio concreto:
+sudo mount -t nfs 192.168.1.100:/volume1/pi-backup /mnt/backup
+
+# 4. Verifica mount
+mountpoint /mnt/backup
+df -h /mnt/backup
+
+# 5. Mount automatico al boot
+sudo nano /etc/fstab
+
+# Aggiungi questa riga (adatta IP e percorso):
+192.168.1.100:/volume1/pi-backup /mnt/backup nfs defaults,_netdev 0 0
+
+# Salva e testa:
+sudo mount -a
+
+MONTAGGIO NAS - OPZIONE B: SMB/CIFS (Windows Share)
+----------------------------------------------------
+# 1. Installa client CIFS
+sudo apt-get install cifs-utils
+
+# 2. Crea punto di mount
+sudo mkdir -p /mnt/backup
+
+# 3. Crea file credenziali (più sicuro)
+sudo nano /root/.smbcredentials
+
+# Contenuto del file:
+username=tuo_utente
+password=tua_password
+
+# Proteggi il file:
+sudo chmod 600 /root/.smbcredentials
+
+# 4. Mount manuale (per test)
+sudo mount -t cifs //NAS_IP/condivisione /mnt/backup -o credentials=/root/.smbcredentials,uid=1000,gid=1000
+
+# Esempio concreto:
+sudo mount -t cifs //192.168.1.100/pi-backup /mnt/backup -o credentials=/root/.smbcredentials,uid=1000,gid=1000
+
+# 5. Mount automatico al boot
+sudo nano /etc/fstab
+
+# Aggiungi questa riga:
+//192.168.1.100/pi-backup /mnt/backup cifs credentials=/root/.smbcredentials,uid=1000,gid=1000,_netdev 0 0
+
+# Salva e testa:
+sudo mount -a
+
+MONTAGGIO DISCO USB
+-------------------
+# 1. Identifica il disco
+sudo fdisk -l
+# Esempio: /dev/sda1
+
+# 2. Crea punto di mount
+sudo mkdir -p /mnt/backup
+
+# 3. Mount manuale
+sudo mount /dev/sda1 /mnt/backup
+
+# 4. Mount automatico (opzionale)
+# Trova UUID del disco:
+sudo blkid /dev/sda1
+
+# Aggiungi a /etc/fstab:
+UUID=xxxxx-xxxxx-xxxxx /mnt/backup ext4 defaults 0 2
+
+VERIFICA CONFIGURAZIONE
+------------------------
+# Il mount deve essere scrivibile
+sudo touch /mnt/backup/test.txt
+sudo rm /mnt/backup/test.txt
+
+# Deve essere un mount point
+mountpoint -q /mnt/backup && echo "OK" || echo "ERRORE"
+
+# Verifica spazio
+df -h /mnt/backup
+
+PROBLEMI COMUNI
+---------------
+• "Permission denied" → Controlla permessi utente/password
+• "Mount point does not exist" → Crea la directory con mkdir
+• "Network unreachable" → Verifica IP e connessione di rete
+• "Stale file handle" → Rimonta con: sudo umount -f /mnt/backup && sudo mount -a
+
+================================================================================
+7. UTILIZZO DI SYSTEM_BACKUP.SH
+================================================================================
+
+SINTASSI BASE
+-------------
+sudo system_backup [percorso_backup] [giorni_retention]
+
+PARAMETRI
+---------
+percorso_backup    → Dove salvare i backup (default: /mnt/backup)
+giorni_retention   → Giorni da mantenere i backup (default: 3)
+
+ESEMPI DI UTILIZZO
+------------------
+
+# Esempio 1: Usa tutti i default
+sudo system_backup
+# Backup in: /mnt/backup
+# Retention: 3 giorni
+
+# Esempio 2: Specifica solo il percorso
+sudo system_backup /mnt/nas-backup
+# Backup in: /mnt/nas-backup
+# Retention: 3 giorni (default)
+
+# Esempio 3: Specifica percorso e retention
+sudo system_backup /mnt/backup 7
+# Backup in: /mnt/backup
+# Retention: 7 giorni (1 settimana)
+
+# Esempio 4: Backup settimanale con retention lunga
+sudo system_backup /mnt/backup 28
+# Backup in: /mnt/backup
+# Retention: 28 giorni (4 settimane)
+
+# Esempio 5: Backup su disco USB
+sudo system_backup /media/usb-disk 14
+# Backup in: /media/usb-disk
+# Retention: 14 giorni (2 settimane)
+
+COSA SUCCEDE DURANTE L'ESECUZIONE
+----------------------------------
+1. Lo script mostra:
+   [INFO] Raspberry Pi System Backup Starting
+   [INFO] Configuration:
+   [INFO]   Hostname: raspberry-pi
+   [INFO]   Backup path: /mnt/backup
+   [INFO]   Retention: 7 days
+
+2. Esegue i controlli:
+   [INFO] Testing write access...
+   [INFO] Testing mount responsiveness...
+   [INFO] Scanning for existing backups...
+   [INFO] Found 2 existing backup(s)
+
+3. Crea il backup (questa parte dura 10-15 minuti):
+   [INFO] Creating Backup
+   [INFO] Starting dd operation...
+   104857600 bytes (105 MB) copied, 4 s, 26.2 MB/s
+   ... [progresso in tempo reale]
+   15728640000 bytes (16 GB) copied, 580 s, 27.1 MB/s
+   [INFO] dd completed in 9m 40s
+
+4. Verifica e cancella vecchi:
+   [INFO] Checking Old Backups
+   [INFO] Found 1 backup(s) to delete
+   [INFO] Deleting: raspberry-pi.20250201.img
+   [INFO] ✓ Deleted successfully
+
+5. Riduce dimensioni (se pishrink installato):
+   [INFO] Resizing Image
+   [INFO] Original size: 15G
+   [INFO] Running pishrink...
+   [INFO] Resize successful!
+   [INFO] New size: 3.1G
+
+6. Riepilogo finale:
+   [INFO] Backup Summary
+   [INFO] Total backups on NAS: 3
+   [INFO]   - raspberry-pi.20250206.img (3.2G)
+   [INFO]   - raspberry-pi.20250207.img (3.1G)
+   [INFO]   - raspberry-pi.20250208_143022.img (3.1G)
+   [INFO] Backup completed successfully
+
+FORMATO NOME FILE
+-----------------
+I backup vengono salvati con questo formato:
+HOSTNAME.YYYYmmdd_HHMMSS.img
+
+Esempi:
+raspberry-pi.20250208_143022.img
+→ Host: raspberry-pi
+→ Data: 8 febbraio 2025
+→ Ora: 14:30:22
+
+DOVE TROVARE I BACKUP
+----------------------
+I file vengono salvati nella directory specificata:
+/mnt/backup/raspberry-pi.20250208_143022.img
+/mnt/backup/raspberry-pi.20250207_120511.img
+/mnt/backup/raspberry-pi.20250206_083344.img
+
+QUANTO SPAZIO OCCUPANO
+-----------------------
+• Senza pishrink: ~16GB per backup (SD 16GB)
+• Con pishrink: ~3-4GB per backup
+• Con retention 7 giorni: 7 × 3-4GB = ~21-28GB
+
+MODIFICARE I DEFAULT
+--------------------
+Per cambiare i valori di default, modifica lo script:
+
+sudo nano /var/www/MyScripts/system_backup.sh
+
+Trova queste righe (circa riga 115):
+backup_path=/mnt/backup        → Cambia il percorso default
+retention_days=3                → Cambia i giorni default
+resize=1                        → 0 = disabilita pishrink
+
+Salva e chiudi (Ctrl+X, Y, Invio)
+
+================================================================================
+8. UTILIZZO DI PISHRINK.SH
+================================================================================
+
+*** NOTA IMPORTANTE: USO OPZIONALE DI PISHRINK ***
+
+pishrink viene GIÀ ESEGUITO AUTOMATICAMENTE da system_backup.sh al termine 
+del backup. Non è necessario eseguirlo manualmente a meno che non si voglia:
+
+• Ridurre ulteriormente un'immagine già creata
+• Comprimere un'immagine con gzip/xz (opzioni -z, -Z)
+• Creare una copia ridotta mantenendo l'originale
+• Disabilitare l'auto-espansione (opzione -s)
+
+Se system_backup.sh ha già ridotto l'immagine (da 16GB a 3-4GB), NON è
+necessario eseguire pishrink nuovamente.
+
+================================================================================
+
+QUANDO USARE PISHRINK MANUALMENTE
+----------------------------------
+• Dopo aver creato un backup con dd MANUALE (senza system_backup)
+• Per ridurre immagini create da altri sistemi
+• Per comprimere immagini prima di trasferirle via Internet
+• Per creare immagini master da distribuire su SD di dimensione fissa
+
+SINTASSI BASE
+-------------
+sudo pishrink [opzioni] immagine.img [nuova_immagine.img]
+
+OPZIONI
+-------
+-s    Non abilitare auto-espansione al primo boot
+-v    Modalità verbose (mostra dettagli)
+-r    Usa riparazione avanzata filesystem se necessario
+-z    Comprimi con gzip dopo riduzione
+-Z    Comprimi con xz dopo riduzione  
+-a    Compressione parallela (multi-core)
+-d    Debug mode con log dettagliato
+
+ESEMPI PRATICI
+--------------
+
+# Esempio 1: Riduzione semplice (modifica file originale)
+sudo pishrink /mnt/backup/raspberry-pi.20250208.img
+# ATTENZIONE: Sovrascrive il file originale!
+
+# Esempio 2: Crea nuova immagine ridotta (mantiene originale)
+sudo pishrink /mnt/backup/originale.img /mnt/backup/ridotto.img
+# Originale intatto, crea ridotto.img
+
+# Esempio 3: Riduzione con compressione gzip
+sudo pishrink -z /mnt/backup/raspberry-pi.20250208.img
+# Crea: raspberry-pi.20250208.img.gz
+
+# Esempio 4: Riduzione con compressione xz (migliore rapporto)
+sudo pishrink -Z /mnt/backup/raspberry-pi.20250208.img
+# Crea: raspberry-pi.20250208.img.xz
+
+# Esempio 5: Compressione parallela (più veloce)
+sudo pishrink -az /mnt/backup/raspberry-pi.20250208.img
+# Usa tutti i core CPU per comprimere
+
+# Esempio 6: Verbose per vedere cosa fa
+sudo pishrink -v /mnt/backup/raspberry-pi.20250208.img
+# Mostra tutti i passaggi
+
+# Esempio 7: Senza auto-espansione
+sudo pishrink -s /mnt/backup/raspberry-pi.20250208.img
+# L'immagine NON si espanderà al primo boot
+
+COSA SUCCEDE DURANTE L'ESECUZIONE
+----------------------------------
+pishrink v0.1.3
+
+Gathering data...
+Creating loopback device...
+Checking filesystem...
+e2fsck 1.46.2 (28-Feb-2021)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+
+Shrinking filesystem...
+resize2fs 1.46.2 (28-Feb-2021)
+Resizing the filesystem to 925440 blocks
+The filesystem is now 925440 (4k) blocks long
+
+Shrinking partition...
+Shrinking image...
+
+Shrunk /mnt/backup/raspberry-pi.20250208.img from 15G to 3.1G
+
+TEMPO NECESSARIO
+----------------
+• Analisi filesystem: ~30 secondi
+• Ridimensionamento: ~2-4 minuti
+• Compressione gzip: ~2-3 minuti aggiuntivi
+• Compressione xz: ~5-8 minuti aggiuntivi
+• Totale: 3-10 minuti a seconda opzioni
+
+RISPARMIO SPAZIO TIPICO
+------------------------
+SD 16GB con sistema base:
+• Prima: 16GB
+• Dopo: 3.5GB
+• Risparmio: 77%
+
+SD 16GB con sistema pieno (12GB usati):
+• Prima: 16GB
+• Dopo: 12.5GB
+• Risparmio: 22%
+
+Con compressione gzip aggiuntiva:
+• 3.5GB → 1.2GB
+• Risparmio totale: 92%
+
+RIPRISTINO IMMAGINE RIDOTTA
+----------------------------
+Le immagini ridotte con pishrink funzionano normalmente:
+
+# Su Linux/Mac:
+sudo dd if=ridotto.img of=/dev/sdX bs=4M status=progress
+
+# Con Raspberry Pi Imager:
+1. Apri Raspberry Pi Imager
+2. Scegli "Use custom"
+3. Seleziona il file .img
+4. Scegli la SD card
+5. Write
+
+Al primo boot, se non hai usato -s, la partizione si espanderà
+automaticamente per usare tutta la SD card.
+
+================================================================================
+9. AUTOMAZIONE CON CRON
+================================================================================
+
+CRON BASICS
+-----------
+Cron è il servizio che esegue comandi automaticamente a orari programmati.
+
+Formato cron:
+┌───────────── minuto (0 - 59)
+│ ┌───────────── ora (0 - 23)
+│ │ ┌───────────── giorno del mese (1 - 31)
+│ │ │ ┌───────────── mese (1 - 12)
+│ │ │ │ ┌───────────── giorno della settimana (0 - 6) (0=Domenica)
+│ │ │ │ │
+│ │ │ │ │
+* * * * * comando da eseguire
+
+CONFIGURAZIONE CRON
+-------------------
+# Modifica il crontab di root
+sudo crontab -e
+
+# La prima volta scegli un editor (nano è il più semplice)
+# Aggiungi le righe desiderate alla fine del file
+# Salva e chiudi (Ctrl+X, Y, Invio)
+
+# Verifica cron attivi
+sudo crontab -l
+
+ESEMPI CONFIGURAZIONE CRON
+---------------------------
+
+# Backup giornaliero alle 2:00 AM, mantieni 7 giorni
+0 2 * * * /usr/local/bin/system_backup /mnt/backup 7
+
+# Backup giornaliero alle 3:00 AM, mantieni 14 giorni
+0 3 * * * /usr/local/bin/system_backup /mnt/backup 14
+
+# Backup settimanale ogni domenica alle 3:00 AM, mantieni 4 settimane
+0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 28
+
+# Backup mensile il primo giorno del mese alle 4:00 AM, mantieni 6 mesi
+0 4 1 * * /usr/local/bin/system_backup /mnt/backup 180
+
+# Due backup al giorno (mattina e sera)
+0 2 * * * /usr/local/bin/system_backup /mnt/backup/morning 3
+0 22 * * * /usr/local/bin/system_backup /mnt/backup/evening 3
+
+STRATEGIE DI BACKUP RACCOMANDATE
+---------------------------------
+
+STRATEGIA 1: Base (uso domestico)
+----------------------------------
+Backup giornaliero con retention 7 giorni:
+
+0 2 * * * /usr/local/bin/system_backup /mnt/backup 7
+
+Spazio richiesto: ~28GB (7 × 4GB)
+Protezione: ultima settimana
+
+STRATEGIA 2: Professionale
+---------------------------
+Backup giornaliero + settimanale:
+
+# Giornaliero alle 2:00 AM, mantieni 7 giorni
+0 2 * * 1-6 /usr/local/bin/system_backup /mnt/backup/daily 7
+
+# Settimanale domenica alle 3:00 AM, mantieni 4 settimane
+0 3 * * 0 /usr/local/bin/system_backup /mnt/backup/weekly 28
+
+Spazio richiesto: ~40GB
+Protezione: 7 giorni granularità giornaliera + 4 settimane
+
+STRATEGIA 3: Massima sicurezza (3-2-1 rule)
+--------------------------------------------
+3 copie, 2 supporti, 1 off-site:
+
+# Locale giornaliero
+0 2 * * * /usr/local/bin/system_backup /mnt/nas-locale 7
+
+# USB settimanale
+0 3 * * 0 /usr/local/bin/system_backup /media/usb-backup 28
+
+# Remoto mensile (manuale o script sync)
+0 4 1 * * rsync -av /mnt/nas-locale/*.img utente@nas-remoto:/backup/
+
+Spazio richiesto: ~100GB totali
+Protezione: massima
+
+SALVARE OUTPUT CRON
+-------------------
+Per salvare l'output dei backup eseguiti da cron:
+
+# Salva tutto in un file log
+0 2 * * * /usr/local/bin/system_backup /mnt/backup 7 >> /var/log/backup_cron.log 2>&1
+
+# Salva solo errori
+0 2 * * * /usr/local/bin/system_backup /mnt/backup 7 2>> /var/log/backup_errors.log
+
+# Non salvare nulla (esecuzione silenziosa)
+0 2 * * * /usr/local/bin/system_backup /mnt/backup 7 >/dev/null 2>&1
+
+MONITORAGGIO BACKUP AUTOMATICI
+-------------------------------
+# Visualizza log cron
+tail -f /var/log/backup_cron.log
+
+# Verifica ultimo backup
+ls -lht /mnt/backup/*.img | head -5
+
+# Controlla se cron è attivo
+sudo systemctl status cron
+
+# Verifica prossime esecuzioni (non standard su tutti i sistemi)
+# Installa: sudo apt-get install cron-utils
+# Poi: crontab -l | cron-utils
+
+NOTIFICHE VIA EMAIL (opzionale)
+--------------------------------
+Per ricevere email quando il backup completa:
+
+# 1. Installa postfix o ssmtp
+sudo apt-get install ssmtp mailutils
+
+# 2. Configura email (esempio Gmail)
+sudo nano /etc/ssmtp/ssmtp.conf
+
+# Contenuto:
+root=tua_email@gmail.com
+mailhub=smtp.gmail.com:587
+AuthUser=tua_email@gmail.com
+AuthPass=tua_app_password
+UseSTARTTLS=YES
+
+# 3. Modifica cron per inviare email
+0 2 * * * /usr/local/bin/system_backup /mnt/backup 7 && echo "Backup OK" | mail -s "Backup Raspberry Pi" tua_email@gmail.com
+
+SCRIPT WRAPPER CON NOTIFICHE
+-----------------------------
+Crea /usr/local/bin/backup_with_notify.sh:
+
+#!/bin/bash
+LOG=/tmp/backup_result.log
+if /usr/local/bin/system_backup /mnt/backup 7 > $LOG 2>&1; then
+    mail -s "✓ Backup OK - $(hostname)" tua@email.com < $LOG
+else
+    mail -s "✗ Backup FAILED - $(hostname)" tua@email.com < $LOG
+fi
+
+Rendi eseguibile:
+sudo chmod +x /usr/local/bin/backup_with_notify.sh
+
+Usa in cron:
+0 2 * * * /usr/local/bin/backup_with_notify.sh
+
+================================================================================
+10. RISOLUZIONE PROBLEMI
+================================================================================
+
+PROBLEMA: "This script must be run as root"
+--------------------------------------------
+CAUSA: Script eseguito senza privilegi root
+SOLUZIONE: Usa sudo
+  sudo system_backup
+
+PROBLEMA: "Backup path does not exist"
+---------------------------------------
+CAUSA: Directory di destinazione non esiste
+SOLUZIONE: Crea la directory
+  sudo mkdir -p /mnt/backup
+
+PROBLEMA: "NOT a mount point"
+------------------------------
+CAUSA: Il NAS non è montato
+SOLUZIONE: 
+  1. Verifica mount: mount | grep backup
+  2. Monta manualmente: sudo mount -a
+  3. Controlla /etc/fstab
+  4. Verifica connessione di rete: ping NAS_IP
+
+PROBLEMA: "Cannot write to backup path"
+----------------------------------------
+CAUSA: Permessi insufficienti o mount read-only
+SOLUZIONE:
+  1. Verifica permessi: ls -ld /mnt/backup
+  2. Test scrittura: sudo touch /mnt/backup/test
+  3. Verifica mount: mount | grep backup
+  4. Rimonta: sudo umount /mnt/backup && sudo mount -a
+
+PROBLEMA: "Backup path is not responsive"
+------------------------------------------
+CAUSA: Problemi di rete o NAS offline
+SOLUZIONE:
+  1. Verifica NAS acceso e raggiungibile: ping NAS_IP
+  2. Controlla cavo di rete
+  3. Verifica servizi NAS (NFS/SMB) attivi
+  4. Prova a rimontare
+
+PROBLEMA: "No space left on device"
+------------------------------------
+CAUSA: NAS pieno
+SOLUZIONE:
+  1. Verifica spazio: df -h /mnt/backup
+  2. Cancella backup vecchi manualmente:
+     ls -lt /mnt/backup/*.img | tail -3
+     sudo rm /mnt/backup/file_vecchio.img
+  3. Riduci retention_days
+  4. Aggiungi più spazio al NAS
+
+PROBLEMA: "Backup file is suspiciously small"
+----------------------------------------------
+CAUSA: dd fallito o interrotto
+SOLUZIONE:
+  1. Controlla lo spazio disco
+  2. Verifica /dev/mmcblk0 esista: ls -l /dev/mmcblk0
+  3. Riprova il backup
+  4. Se persiste, problemi con la SD card
+
+PROBLEMA: "pishrink not found"
+-------------------------------
+CAUSA: pishrink non installato o non in PATH
+SOLUZIONE:
+  1. Verifica: which pishrink
+  2. Controlla installazione: ls -l /usr/local/bin/pishrink
+  3. Reinstalla link: sudo ln -s /var/www/MyScripts/pishrink.sh /usr/local/bin/pishrink
+  4. Oppure disabilita resize nello script: resize=0
+
+PROBLEMA: Backup molto lento
+-----------------------------
+CAUSA: SD card lenta, NAS lento, o rete lenta
+SOLUZIONE:
+  1. Normale: 10-15 minuti per 16GB è OK
+  2. Se >30 minuti, controlla velocità rete
+  3. Prova backup su disco USB locale per confronto
+  4. Considera backup durante la notte
+
+PROBLEMA: Cron non esegue il backup
+------------------------------------
+CAUSA: Varie
+SOLUZIONE:
+  1. Verifica cron attivo: sudo systemctl status cron
+  2. Controlla sintassi: sudo crontab -l
+  3. Verifica PATH in cron: usa path completi /usr/local/bin/
+  4. Controlla log: grep CRON /var/log/syslog
+  5. Test manuale del comando
+  6. Aggiungi output a file: >> /var/log/backup.log 2>&1
+
+PROBLEMA: File corrotti o non apribili
+---------------------------------------
+CAUSA: Backup interrotto o problemi durante scrittura
+SOLUZIONE:
+  1. Non interrompere mai il backup in corso
+  2. Usa sync nel sistema: sync
+  3. Verifica integrità NAS
+  4. Mantieni Pi connesso alla corrente durante backup
+  5. Riprova il backup
+
+PROBLEMA: "Permission denied" con NAS
+--------------------------------------
+CAUSA: Credenziali errate o permessi NAS
+SOLUZIONE:
+  1. Verifica username/password in .smbcredentials
+  2. Controlla permessi condivisione sul NAS
+  3. Verifica user mapping (uid/gid)
+  4. Su NAS, consenti accesso all'utente
+
+DEBUGGING AVANZATO
+-------------------
+# Abilita bash debug mode
+bash -x /var/www/MyScripts/system_backup.sh /mnt/backup 7
+
+# Verifica tutti i comandi
+set -x
+sudo system_backup /mnt/backup 7
+
+# Controlla system logs
+journalctl -xe
+tail -100 /var/log/syslog
+
+# Test mount manuale
+sudo mount -v -t nfs NAS_IP:/path /mnt/backup
+
+================================================================================
+11. DOMANDE FREQUENTI (FAQ)
+================================================================================
+
+D: Posso usare il Raspberry Pi durante il backup?
+R: SÌ! Il backup copia la SD card mentre il sistema è in uso. È sicuro
+   continuare a usare il Pi normalmente. Evita però di spegnere il sistema.
+
+D: È davvero sicuro fare backup "a caldo" mentre il sistema è acceso?
+R: SÌ, è assolutamente sicuro. Il backup a caldo funziona perché:
+   • Il comando dd copia direttamente dal device (/dev/mmcblk0)
+   • Il kernel Linux garantisce che i dati letti siano consistenti
+   • Lo script crea un flag /boot/forcefsck che forza una verifica filesystem
+     al prossimo boot dell'immagine ripristinata
+   • Eventuali inconsistenze minori vengono corrette automaticamente al primo
+     avvio dopo il ripristino
+   • Questa tecnica è usata da anni in ambienti professionali Linux
+   IMPORTANTE: Il backup a caldo è MOLTO PIÙ SICURO che spegnere/riaccendere
+   continuamente il Raspberry Pi, che può causare corruzione della SD.
+
+D: Il backup a caldo può corrompere il sistema in esecuzione?
+R: NO. Il backup è una LETTURA della SD card, non una scrittura. Il sistema
+   originale non viene MAI modificato durante il backup. Anche se il backup
+   fallisse, il tuo Raspberry Pi continuerebbe a funzionare normalmente.
+
+D: Il backup include TUTTI i file?
+R: SÌ, è una copia bit-per-bit completa della SD card. Include sistema
+   operativo, configurazioni, applicazioni installate, dati utente, tutto.
+
+D: Posso ripristinare su una SD card più piccola?
+R: Solo se l'immagine ridotta con pishrink è più piccola della nuova SD.
+   Esempio: immagine 3.5GB può andare su SD da 4GB, 8GB, 16GB, ecc.
+
+D: Posso ripristinare su una SD card più grande?
+R: ★★★ SÌ, ASSOLUTAMENTE! Questa è una delle caratteristiche più utili! ★★★
+   
+   L'immagine si espande AUTOMATICAMENTE al primo boot per usare TUTTA la SD.
+   
+   ESEMPIO CONCRETO:
+   • Hai backup ridotto da 3.5GB (era su SD 16GB)
+   • Compri SD nuova da 64GB
+   • Ripristini il backup da 3.5GB sulla SD da 64GB
+   • Al primo boot: il sistema si espande automaticamente a 64GB
+   • Risultato: 60.5GB di spazio libero in più!
+   
+   PROCESSO AUTOMATICO:
+   1º boot → Sistema rileva SD da 64GB ed espande partizione
+   2º boot → Sistema pronto con tutti i 64GB disponibili
+   
+   Nessuna configurazione manuale necessaria!
+   
+   NOTA: Se hai usato pishrink con opzione -s, l'auto-espansione è disabilitata
+   e dovrai espandere manualmente (o usa raspi-config).
+
+D: Come faccio a passare da una SD da 16GB a una da 32GB o più grande?
+R: È SEMPLICISSIMO grazie all'auto-espansione automatica!
+   
+   PROCEDURA COMPLETA:
+   1. Crea backup del sistema attuale:
+      sudo system_backup /mnt/backup 1
+      
+   2. Aspetta che finisca (il backup sarà ridotto automaticamente a ~3-4GB)
+   
+   3. Spegni il Raspberry Pi:
+      sudo shutdown -h now
+      
+   4. Su un PC, scrivi il backup sulla nuova SD più grande:
+      - Usa Raspberry Pi Imager (raccomandato)
+      - Oppure: sudo dd if=backup.img of=/dev/sdX bs=4M
+      
+   5. Inserisci la nuova SD nel Raspberry Pi e accendi
+   
+   6. Al primo avvio vedrai:
+      "Expanding filesystem..." 
+      Il sistema si riavvierà automaticamente
+      
+   7. Al secondo avvio: FATTO! 
+      Sistema identico ma con tutta la nuova SD disponibile
+   
+   TEMPO NECESSARIO: ~5 minuti (escluso il backup iniziale)
+   
+   VANTAGGI:
+   ✓ Nessun comando da digitare
+   ✓ Nessuna configurazione manuale
+   ✓ Tutto automatico
+   ✓ Impossibile sbagliare
+   ✓ Funziona anche da 16GB → 32GB → 64GB → 128GB!
+
+D: Quanto spazio serve sul NAS?
+R: Lo script verifica AUTOMATICAMENTE che ci sia spazio sufficiente!
+   
+   CALCOLO AUTOMATICO:
+   • Lo script rileva dimensione SD card (es. 16GB)
+   • Verifica spazio disponibile sul NAS
+   • BLOCCA il backup se spazio insufficiente
+   • AVVISA se spazio < 2x dimensione SD
+   
+   CALCOLO MANUALE:
+   • Formula base: (dimensione SD ridotta) × (giorni retention) + margine
+   • Esempio SD 16GB: 4GB × 7 giorni = 28GB
+   • Raccomandato: 35GB (con 20% margine)
+   
+   ESEMPIO OUTPUT SCRIPT:
+   [INFO] SD card size: 16GB
+   [INFO] Destination available space: 120GB
+   [INFO] Space check OK: 120GB available (32GB recommended)
+
+D: Il backup rallenta il Raspberry Pi?
+R: Leggermente. Durante il backup, l'I/O della SD è più intenso ma il sistema
+   rimane usabile per compiti normali.
+
+D: Posso fare backup di più Raspberry Pi sullo stesso NAS?
+R: SÌ! Ogni Pi userà il suo HOSTNAME nei nomi file, quindi non si
+   sovrascrivono. Esempio:
+   /mnt/backup/raspberry-pi-1.20250208.img
+   /mnt/backup/raspberry-pi-2.20250208.img
+
+D: Cosa succede se il backup viene interrotto?
+R: Il file parziale viene cancellato automaticamente. I backup precedenti
+   rimangono intatti. Basta rieseguire lo script.
+
+D: Devo spegnere il Pi per il ripristino?
+R: SÌ. Per ripristinare devi estrarre la SD card, collegarla a un PC,
+   e scrivere l'immagine con dd o Raspberry Pi Imager.
+
+D: Il backup include i database (MySQL, PostgreSQL)?
+R: SÌ, ma potrebbero non essere consistenti se in uso durante il backup.
+   Per database critici, fai dump separati prima del backup.
+
+D: Posso comprimere i backup per risparmiare spazio?
+R: SÌ, usa pishrink con -z (gzip) o -Z (xz). Esempio:
+   sudo pishrink -z /mnt/backup/file.img
+   Risparmio aggiuntivo: 60-70%
+
+D: Come ripristino un backup?
+R: Vedi sezione "RIPRISTINO BACKUP" sotto.
+
+D: Il backup funziona con Raspberry Pi OS a 64-bit?
+R: SÌ, funziona con qualsiasi versione di Raspberry Pi OS (32 o 64 bit)
+   e la maggior parte delle distribuzioni Linux.
+
+D: Posso programmare backup a orari diversi?
+R: SÌ, vedi sezione "AUTOMAZIONE CON CRON" per esempi.
+
+D: Lo script funziona su Ubuntu/Debian?
+R: SÌ, funziona su qualsiasi sistema Debian/Ubuntu based, non solo Raspberry Pi.
+
+D: I backup sono incrementali o completi?
+R: COMPLETI. Ogni backup è un'immagine completa indipendente. Non usa
+   tecnologie incrementali tipo rsync o btrfs snapshots.
+
+D: Posso escludere cartelle dal backup?
+R: NO con questo script. È un backup completo della SD. Per backup selettivi
+   usa rsync invece di dd.
+
+D: Quanto durano i backup?
+R: • dd (creazione): 10-15 min per SD 16GB
+   • pishrink (riduzione): 3-5 min
+   • Totale: ~15-20 minuti
+
+D: Il backup funziona anche via WiFi?
+R: SÌ, ma è PIÙ LENTO. Raccomandato Ethernet cablato per velocità ottimale.
+
+================================================================================
+12. ESEMPI PRATICI COMPLETI
+================================================================================
+
+SCENARIO 1: Prima configurazione completa
+------------------------------------------
+Obiettivo: Setup da zero con backup giornaliero
+
+# 1. Installa tool necessari
+sudo apt-get update
+sudo apt-get install parted e2fsprogs nfs-common
+
+# 2. Crea directory script
+sudo mkdir -p /var/www/MyScripts
+
+# 3. Copia script (assumendo siano in /home/pi)
+sudo cp /home/pi/system_backup_simple.sh /var/www/MyScripts/system_backup.sh
+sudo cp /home/pi/pishrink.sh /var/www/MyScripts/pishrink.sh
+sudo chmod +x /var/www/MyScripts/*.sh
+
+# 4. Crea link simbolici
+sudo ln -s /var/www/MyScripts/system_backup.sh /usr/local/bin/system_backup
+sudo ln -s /var/www/MyScripts/pishrink.sh /usr/local/bin/pishrink
+
+# 5. Configura mount NAS
+sudo mkdir -p /mnt/backup
+sudo nano /etc/fstab
+# Aggiungi: 192.168.1.100:/volume1/backup /mnt/backup nfs defaults,_netdev 0 0
+sudo mount -a
+
+# 6. Test manuale
+sudo system_backup /mnt/backup 7
+
+# 7. Configura backup automatico
+sudo crontab -e
+# Aggiungi: 0 2 * * * /usr/local/bin/system_backup /mnt/backup 7
+
+FATTO! Backup giornaliero alle 2:00 AM configurato.
+
+SCENARIO 2: Backup su USB prima di aggiornamento sistema
+----------------------------------------------------------
+Obiettivo: Backup di sicurezza prima di apt upgrade
+
+# 1. Collega disco USB e identifica device
+sudo fdisk -l
+# Trova /dev/sda1
+
+# 2. Monta USB
+sudo mkdir -p /media/backup-usb
+sudo mount /dev/sda1 /media/backup-usb
+
+# 3. Crea backup
+sudo system_backup /media/backup-usb 1
+
+# 4. Procedi con aggiornamento
+sudo apt-get update
+sudo apt-get upgrade
+
+# 5. Se tutto OK, smonta USB
+sudo umount /media/backup-usb
+
+SCENARIO 3: Creazione immagine master per distribuzione
+-------------------------------------------------------
+Obiettivo: Sistema configurato da distribuire a più Pi
+
+# 1. Configura il Raspberry Pi "master" come desiderato
+# ... installa software, configura, ecc ...
+
+# 2. Crea backup
+sudo system_backup /home/pi/master-backup 1
+
+# 3. Riduci e comprimi l'immagine
+cd /home/pi/master-backup
+sudo pishrink -az raspberry-pi.*.img
+
+# Risultato: file .img.gz compresso e ridotto
+# 4. Distribuisci questo file agli altri Pi
+# 5. Scrivi su ogni SD card con Raspberry Pi Imager
+
+SCENARIO 4: Migrazione a SD card più grande
+--------------------------------------------
+Obiettivo: Passare da SD 16GB a 32GB
+
+# 1. Backup SD corrente
+sudo system_backup /mnt/backup 1
+
+# 2. Spegni il Pi
+sudo shutdown -h now
+
+# 3. Su un PC, scrivi l'immagine sulla nuova SD 32GB
+# Con Raspberry Pi Imager o dd
+
+# 4. Inserisci nuova SD nel Pi e avvia
+# La partizione si espanderà automaticamente a 32GB
+
+SCENARIO 5: Ripristino dopo disastro
+-------------------------------------
+Obiettivo: Ripristinare sistema da backup
+
+# 1. Identifica l'ultimo backup buono
+ls -lht /mnt/backup/*.img | head -1
+
+# 2. Su un PC con Linux/Mac:
+sudo dd if=/mnt/backup/raspberry-pi.20250208.img of=/dev/sdX bs=4M status=progress
+sync
+
+# 3. Oppure usa Raspberry Pi Imager
+# - Use custom image
+# - Seleziona il file .img
+# - Scegli SD card
+# - Write
+
+# 4. Inserisci SD nel Pi e avvia
+# Sistema ripristinato allo stato del backup!
+
+SCENARIO 6: Backup multi-destinazione (ridondanza)
+---------------------------------------------------
+Obiettivo: Backup su NAS + USB per sicurezza massima
+
+# Script personalizzato: /usr/local/bin/backup-multi.sh
+#!/bin/bash
+echo "=== Multi-destination backup ==="
+
+# Backup su NAS
+if mountpoint -q /mnt/nas-backup; then
+    echo "Backing up to NAS..."
+    /usr/local/bin/system_backup /mnt/nas-backup 7
+else
+    echo "WARNING: NAS not mounted, skipping"
+fi
+
+# Backup su USB (se presente)
+if mountpoint -q /media/usb-backup; then
+    echo "Backing up to USB..."
+    /usr/local/bin/system_backup /media/usb-backup 14
+else
+    echo "INFO: USB not mounted, skipping"
+fi
+
+echo "=== Backup completed ==="
+
+# Rendi eseguibile
+sudo chmod +x /usr/local/bin/backup-multi.sh
+
+# Cron settimanale
+# 0 3 * * 0 /usr/local/bin/backup-multi.sh
+
+================================================================================
+13. BEST PRACTICES
+================================================================================
+
+SICUREZZA
+---------
+✓ Esegui sempre test di ripristino periodici (es. ogni 3 mesi)
+✓ Mantieni almeno 2 copie dei backup (NAS + USB/cloud)
+✓ Proteggi il file .smbcredentials: sudo chmod 600 /root/.smbcredentials
+✓ Usa connessione Ethernet (non WiFi) per backup su NAS
+✓ Non interrompere mai un backup in corso
+✓ Verifica periodicamente l'integrità del NAS
+✓ Mantieni il Pi connesso a un UPS durante il backup
+
+PIANIFICAZIONE
+--------------
+✓ Backup giornalieri per sistemi critici
+✓ Backup settimanali per sistemi meno critici
+✓ Retention: almeno 7 giorni, meglio 14-30
+✓ Esegui backup di notte quando il sistema è meno usato
+✓ Documenta la tua strategia di backup
+✓ Testa i ripristini regolarmente
+
+MANUTENZIONE
+------------
+✓ Monitora lo spazio disponibile sul NAS
+✓ Controlla periodicamente i log di backup (se configurati)
+✓ Verifica che i backup vengano eseguiti (ls -lt /mnt/backup)
+✓ Aggiorna pishrink quando disponibile una nuova versione
+✓ Mantieni documentazione di configurazione mount NAS
+✓ Tieni backup dello script stesso
+
+OTTIMIZZAZIONE
+--------------
+✓ Usa pishrink per risparmiare spazio (60-80% in meno)
+✓ Comprimi con -z se trasferisci backup via Internet
+✓ Retention breve per backup giornalieri, lunga per settimanali
+✓ Usa NFS invece di SMB quando possibile (più veloce)
+✓ Ethernet gigabit per backup più veloci
+✓ SD card di qualità per backup più affidabili
+
+ORGANIZZAZIONE
+--------------
+✓ Usa sottocartelle per diversi tipi di backup:
+  /mnt/backup/daily/
+  /mnt/backup/weekly/
+  /mnt/backup/monthly/
+✓ Nomina i backup in modo descrittivo
+✓ Documenta le modifiche negli script
+✓ Mantieni un file README nel NAS con info sui backup
+✓ Usa git per versionare gli script di backup
+
+COSA NON FARE
+-------------
+✗ Non fare backup solo su una destinazione
+✗ Non usare retention troppo breve (<3 giorni)
+✗ Non ignorare gli errori di backup
+✗ Non modificare i backup manualmente
+✗ Non fare affidamento solo su backup automatici (testa!)
+✗ Non dimenticare di testare il ripristino
+✗ Non eseguire backup su filesystem non affidabili (FAT32)
+
+REGOLA 3-2-1
+------------
+Per massima sicurezza, segui la regola 3-2-1:
+• 3 copie dei dati (originale + 2 backup)
+• 2 tipi di supporto diversi (NAS + USB, o NAS + cloud)
+• 1 copia off-site (es. cloud, NAS remoto, disco a casa di un amico)
+
+Esempio implementazione:
+1. Sistema originale (SD del Pi)
+2. Backup giornaliero su NAS locale
+3. Backup settimanale su disco USB
+4. Copia mensile su cloud o NAS remoto
+
+RIPRISTINO BACKUP
+-----------------
+IMPORTANTE: Testa il ripristino PRIMA di averne bisogno!
+
+SU LINUX/MAC:
+1. Identifica la SD card: sudo fdisk -l
+2. Smonta se montata: sudo umount /dev/sdX*
+3. Scrivi immagine: sudo dd if=backup.img of=/dev/sdX bs=4M status=progress
+4. Sync: sync
+5. Espelli: sudo eject /dev/sdX
+
+SU WINDOWS:
+1. Scarica Raspberry Pi Imager o Win32DiskImager
+2. Seleziona "Use custom" → scegli file .img
+3. Seleziona SD card
+4. Write
+5. Attendi completamento
+6. Espelli SD in modo sicuro
+
+CON RASPBERRY PI IMAGER (raccomandato):
+1. Apri Raspberry Pi Imager
+2. Choose OS → Use custom
+3. Seleziona il file backup.img
+4. Choose Storage → seleziona SD card
+5. Write
+6. Attendi "Write Successful"
+7. Chiudi ed espelli SD
+
+VERIFICA RIPRISTINO:
+1. Inserisci SD nel Pi
+2. Avvia il sistema
+3. Verifica che tutto funzioni
+4. Controlla data file: `ls -l /etc/` per confermare data backup
+5. Se tutto OK, il ripristino è riuscito!
+
+================================================================================
+SUPPORTO E RISORSE
+================================================================================
+
+Script originali:
+• system_backup.sh - Custom version basata su Kristofer Källsbo
+• pishrink - https://github.com/Drewsif/PiShrink
+
+Documentazione Raspberry Pi:
+• https://www.raspberrypi.org/documentation/
+
+Community:
+• Raspberry Pi Forums: https://forums.raspberrypi.com/
+• Reddit: r/raspberry_pi
+
+In caso di problemi non risolti da questa guida:
+1. Controlla i log di sistema
+2. Cerca su Google l'errore specifico
+3. Chiedi nei forum ufficiali Raspberry Pi
+4. Verifica problemi hardware (SD, NAS, rete)
+
+================================================================================
+VERSIONE DOCUMENTO
+================================================================================
+
+Versione: 1.0
+Data: Febbraio 2025
+Autore: Documentazione completa per system_backup.sh e pishrink.sh
+
+================================================================================
+FINE GUIDA
+================================================================================
