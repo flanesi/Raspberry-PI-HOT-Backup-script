@@ -299,11 +299,8 @@ df -h /
 # SD card si rompe - ripristino da backup
 
 # 1. Identifica ultimo backup valido
-ls -lht /mnt/backup/*.img | head -1
 
-# 2. Su PC: scrivi immagine su nuova SD
-sudo dd if=/mnt/backup/raspberry-pi.20250208.img of=/dev/sdX bs=4M status=progress
-sync
+# 2. Su PC: scrivi backup su nuova SD con Raspberry Pi Imager
 
 # 3. Inserisci SD e avvia
 # Sistema ripristinato allo stato del backup! ✓
