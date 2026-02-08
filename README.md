@@ -176,7 +176,7 @@ sudo system_backup /mnt/backup 28
 [INFO] Backup completed successfully!
 ```
 
-## 🌐 Configurazione NAS
+## 🌐 Configurazione NAS - Disco USB
 
 ### Preparazione NAS
 
@@ -334,9 +334,11 @@ Quando ripristini un backup ridotto su una SD più grande:
 
 ### Quanto tempo richiede un backup?
 
-- **Creazione (dd)**: 10-15 minuti per SD 16GB
-- **Riduzione (pishrink)**: 3-5 minuti
+- **Creazione (dd)**: circa 10-15 minuti per SD 16GB
+- **Riduzione (pishrink)**: circa 3-5 minuti
 - **Totale**: ~15-20 minuti
+
+Il tempo può variare a seconda del modello di Raspberry utilizzato e della velocità della rete e dei dispositivi utilizzati. 
 
 ### Quanto spazio occupa un backup?
 
@@ -360,7 +362,13 @@ Quando ripristini un backup ridotto su una SD più grande:
 4. Choose Storage → seleziona SD
 5. Write
 
-**Metodo 2: Linux/Mac Terminal**
+**Metodo 2: Win32diskimager **
+1. Apri Win32diskimager
+2. Seleziona file .img
+3. Choose Storage → seleziona SD
+4. Write
+
+**Metodo 3: Linux/Mac Terminal**
 ```bash
 sudo dd if=backup.img of=/dev/sdX bs=4M status=progress
 sync
