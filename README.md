@@ -362,8 +362,8 @@ Il tempo può variare a seconda del modello di Raspberry utilizzato e della velo
 4. Choose Storage → seleziona SD
 5. Write
 
-**Metodo 2: Win32diskimager **
-1. Apri Win32diskimager
+**Metodo 2: Win32DiskImager**
+1. Apri Win32DiskImager
 2. Seleziona file .img
 3. Choose Storage → seleziona SD
 4. Write
