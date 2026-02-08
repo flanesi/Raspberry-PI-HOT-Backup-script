@@ -473,12 +473,9 @@ Questo progetto è rilasciato sotto licenza MIT. Vedi il file [LICENSE](LICENSE)
 
 - **Kristofer Källsbo** - Per il [sistema di backup originale](https://github.com/kallsbo/BASH-RaspberryPI-System-Backup)
 - **Drew Bonasera (Drewsif)** - Per [PiShrink](https://github.com/Drewsif/PiShrink)
-- **Community Raspberry Pi** - Per supporto e feedback
 
 ## 🌟 Progetti Correlati
 
-- [BASH-RaspberryPI-System-Backup](https://github.com/kallsbo/BASH-RaspberryPI-System-Backup) - Script originale di Kristofer Källsbo
-- [PiShrink](https://github.com/Drewsif/PiShrink) - Script originale per riduzione immagini
 - [Raspberry Pi Imager](https://www.raspberrypi.org/software/) - Tool ufficiale per scrivere immagini
 - [Win32DiskImager](https://win32diskimager.org/) - Tool per Windows per scrivere immagini su SD
 
