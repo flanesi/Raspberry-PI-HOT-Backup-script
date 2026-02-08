@@ -19,7 +19,7 @@ Sistema completo e automatico per creare backup della scheda SD del Raspberry Pi
 - 📊 **Supporto multi-destinazione** - NAS (NFS/SMB), USB, disco locale
 - 📏 **Verifica spazio** - Confronta dimensione SD con spazio disponibile
 
-## 🎯 Caratteristica Killer: Auto-Espansione
+## 🎯 Auto-Espansione
 
 > **⭐ Passa facilmente a SD card più grandi senza configurazione manuale!**
 
