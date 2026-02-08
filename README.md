@@ -21,7 +21,7 @@ Sistema completo e automatico per creare backup della scheda SD del Raspberry Pi
 
 ## 🎯 Auto-Espansione
 
-> **⭐ Passa facilmente a SD card più grandi senza configurazione manuale!**
+> **⭐ Passa facilmente a SD card più grandi (o più piccole) senza configurazione manuale!**
 
 Quando ripristini un backup ridotto, il sistema si **espande automaticamente** al primo boot per utilizzare tutto lo spazio disponibile sulla SD.
 
