@@ -40,7 +40,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-print_header "Raspberry Pi HOT Backup System - Installer"
+print_header "Raspberry HOT Pi Backup System - Installer"
 
 echo "This script will install:"
 echo "  • system_backup - Complete SD card backup tool"
@@ -72,6 +72,21 @@ for pkg in $PACKAGES; do
         print_info "Installing $pkg..."
         apt-get install -y -qq $pkg
         print_success "$pkg installed"
+    fi
+done
+
+print_info "Installing optional packages..."
+OPTIONAL_PACKAGES="pv"
+for pkg in $OPTIONAL_PACKAGES; do
+    if dpkg -l | grep -q "^ii  $pkg "; then
+        print_success "$pkg already installed (optional)"
+    else
+        print_info "Installing $pkg (for progress bar with ETA)..."
+        if apt-get install -y -qq $pkg 2>/dev/null; then
+            print_success "$pkg installed"
+        else
+            print_info "$pkg installation failed (optional, skipping)"
+        fi
     fi
 done
 
