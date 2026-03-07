@@ -258,6 +258,36 @@ TEMPO NECESSARIO
 • Resize (pishrink): ~3-5 minuti
 • Totale: ~15-20 minuti per backup completo
 
+VISUALIZZAZIONE PROGRESSO CON STIMA TEMPO
+------------------------------------------
+Durante il backup, lo script mostra il progresso in tempo reale:
+
+CON PV INSTALLATO (raccomandato):
+  [INFO] Starting backup with progress bar (ETA displayed)...
+  7.2GiB 0:04:23 [27.8MiB/s] [============>      ] 45% ETA 0:05:12
+  
+  Mostra:
+  • Dimensione copiata (7.2GiB)
+  • Tempo trascorso (0:04:23)
+  • Velocità corrente (27.8MiB/s)
+  • Barra progresso visuale
+  • Percentuale completamento (45%)
+  • ETA - Tempo stimato rimanente (0:05:12)
+
+SENZA PV (fallback):
+  [INFO] Starting dd operation...
+  7549747200 bytes (7.5 GB) copied, 263 s, 28.7 MB/s
+  
+  Mostra:
+  • Byte copiati
+  • Tempo trascorso
+  • Velocità media
+
+INSTALLAZIONE PV (opzionale):
+  sudo apt-get install pv
+  
+  Il comando viene installato automaticamente dall'installer se disponibile.
+
 ================================================================================
 3. COSA FA PISHRINK.SH
 ================================================================================
@@ -369,6 +399,13 @@ system_backup.sh richiede:
   ✓ mountpoint (preinstallato)
   ✓ timeout (preinstallato)
 
+SOFTWARE OPZIONALE (raccomandato)
+----------------------------------
+  ○ pv - Per barra progresso con ETA durante backup
+    Mostra: percentuale, velocità, tempo rimanente stimato
+    Installa: sudo apt-get install pv
+    Se non disponibile: usa output standard di dd (senza ETA)
+
 pishrink.sh richiede:
   ✓ parted
   ✓ losetup
@@ -379,7 +416,7 @@ pishrink.sh richiede:
 
 Installa i tool mancanti:
 sudo apt-get update
-sudo apt-get install parted e2fsprogs
+sudo apt-get install parted e2fsprogs pv
 
 DESTINAZIONE BACKUP
 -------------------
@@ -560,6 +597,18 @@ PROBLEMI COMUNI
 SINTASSI BASE
 -------------
 sudo system_backup [percorso_backup] [giorni_retention]
+
+COMANDI HELP
+------------
+# Mostra guida rapida di utilizzo
+sudo system_backup --help
+sudo system_backup -h
+sudo system_backup help
+
+# Mostra versione script
+sudo system_backup --version
+sudo system_backup -v
+sudo system_backup version
 
 PARAMETRI
 ---------
@@ -1539,8 +1588,8 @@ In caso di problemi non risolti da questa guida:
 VERSIONE DOCUMENTO
 ================================================================================
 
-Versione: 1.0
-Data: Febbraio 2025
+Versione: 1.0.1
+Data: Marzo 2026
 Autore: Documentazione completa per system_backup.sh e pishrink.sh
 
 ================================================================================
