@@ -1,14 +1,14 @@
 #!/bin/bash
 #
 # =====================================================
-# Raspberry Pi System Backup Script
+# Raspberry Pi System Backup Script - Production Version
 # =====================================================
 #
 # Automates full SD card backup with safety checks and intelligent retention
 #
 # AUTHOR: Based on Kristofer Källsbo's work, enhanced by Flavio Anesi
-# VERSION: 2.1
-# DATE: February 2025
+# VERSION: 1.0.1
+# DATE: March 7, 2026
 #
 # =====================================================
 # SYNTAX
@@ -116,6 +116,92 @@ MIN_EXPECTED_BACKUPS=0  # Minimo numero di backup che devono esistere (0 per il 
 # =====================================================
 # FUNCTIONS
 # =====================================================
+show_help() {
+    cat << EOF
+Raspberry Pi System Backup Script v1.0.1
+
+USAGE:
+    sudo system_backup [BACKUP_PATH] [RETENTION_DAYS]
+
+DESCRIPTION:
+    Creates a complete backup of the Raspberry Pi SD card while the system
+    is running (HOT backup). Automatically reduces image size with pishrink
+    and manages old backups based on retention policy.
+
+PARAMETERS:
+    BACKUP_PATH       Directory where backups will be saved (must be mounted)
+                      Default: /mnt/backup
+                      Example: /mnt/nas-backup, /media/usb-backup
+
+    RETENTION_DAYS    Number of days to keep old backups
+                      Backups older than this will be deleted automatically
+                      Default: 3 days
+                      Recommended: 7 days (1 week)
+
+EXAMPLES:
+    # Use default settings (backup to /mnt/backup, keep 3 days)
+    sudo system_backup
+
+    # Backup to custom location with 7 days retention
+    sudo system_backup /mnt/nas-backup 7
+
+    # Backup to USB drive with 14 days retention
+    sudo system_backup /media/usb-backup 14
+
+    # Weekly backup with 28 days retention (4 weeks)
+    sudo system_backup /mnt/weekly-backup 28
+
+FEATURES:
+    • HOT backup - No need to shutdown the system
+    • Automatic SD card size detection
+    • Space verification before backup
+    • Progress bar with ETA (if pv is installed)
+    • Automatic image reduction with pishrink (60-80% savings)
+    • Auto-expansion on restore to any SD card size
+    • Intelligent retention management
+    • Multiple safety checks
+
+REQUIREMENTS:
+    • Root privileges (sudo)
+    • Mount point for backup destination
+    • Free space >= SD card size
+    • Optional: pv (for progress bar with ETA)
+
+SPACE REQUIREMENTS:
+    Without pishrink:  SD card size × retention days
+    With pishrink:     ~4GB × retention days (for 16GB SD)
+    
+    Example for 16GB SD, 7 days retention:
+    • Without resize: ~112GB (16GB × 7)
+    • With resize:    ~28GB (4GB × 7)
+
+OUTPUT FILES:
+    Backups are saved with format: HOSTNAME.YYYYmmdd_HHMMSS.img
+    Example: raspberry-pi.20250302_143022.img
+
+INSTALLATION:
+    sudo apt-get install pv  # Optional, for ETA display
+    
+MORE INFO:
+    Documentation:  See manual.txt for complete guide
+    Repository:     https://github.com/flanesi/Raspberry-PI-HOT-Backup-script
+    Version:        1.0.1
+    Author:         Based on Kristofer Källsbo's work, enhanced by Flavio Anesi
+
+EOF
+    exit 0
+}
+
+show_version() {
+    echo "Raspberry Pi System Backup Script v1.0.1"
+    echo "March 7, 2026"
+    echo ""
+    echo "Based on: Kristofer Källsbo's BASH-RaspberryPI-System-Backup"
+    echo "Enhanced by: Flavio Anesi"
+    echo "License: MIT"
+    exit 0
+}
+
 log_info() {
     echo "[INFO $(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
@@ -139,6 +225,17 @@ trap cleanup_on_error ERR
 # =====================================================
 # ARGUMENT PARSING
 # =====================================================
+
+# Check for help or version flags
+case "${1:-}" in
+    -h|--help|help)
+        show_help
+        ;;
+    -v|--version|version)
+        show_version
+        ;;
+esac
+
 if [ ! -z "${1:-}" ]; then
     backup_path="$1"
 fi
@@ -172,19 +269,8 @@ if [ -z "$HOSTNAME" ]; then
     exit 1
 fi
 
-# SD card size detection for initial info
-if [ -b "/dev/mmcblk0" ]; then
-    sd_size_bytes=$(blockdev --getsize64 /dev/mmcblk0 2>/dev/null || echo 0)
-    sd_size_gb=$((sd_size_bytes / 1024 / 1024 / 1024))
-else
-    sd_size_gb=16  # Default assumption
-fi
-
 log_info "Configuration:"
 log_info "  Hostname: $HOSTNAME"
-log_info "  SD card size: ${sd_size_gb}GB"
-log_info "  Space required: ${sd_size_gb}GB (minimum)"
-log_info "  Space recommended: $((sd_size_gb * 2))GB (for retention)"
 log_info "  Backup path: $backup_path"
 log_info "  Retention: $retention_days days"
 log_info "  Resize enabled: $resize"
@@ -311,24 +397,44 @@ backup_date=$(date +%Y%m%d_%H%M%S)
 backup_file="$backup_path/$HOSTNAME.$backup_date.img"
 
 log_info "Backup file: $backup_file"
-log_info "Starting dd operation (this will take several minutes)..."
 log_info "Source: /dev/mmcblk0"
 
 start_time=$(date +%s)
 
-# Perform backup with progress
-if ! dd if=/dev/mmcblk0 of="$backup_file" bs=1M conv=fsync status=progress 2>&1; then
-    log_error "dd command failed!"
-    rm -f /boot/forcefsck
-    rm -f "$backup_file"
-    exit 1
+# Check if pv is available for better progress display with ETA
+if command -v pv >/dev/null 2>&1; then
+    log_info "Starting backup with progress bar (ETA displayed)..."
+    # Use pv to show progress bar with ETA, speed, and percentage
+    # -s = size for percentage calculation
+    # -p = percentage
+    # -t = elapsed time  
+    # -e = ETA (estimated time remaining)
+    # -r = rate (speed)
+    # -a = average rate
+    # -b = bytes transferred
+    if ! dd if=/dev/mmcblk0 bs=1M 2>/dev/null | pv -s "$sd_size_bytes" -p -t -e -r -a -b | dd of="$backup_file" bs=1M conv=fsync 2>/dev/null; then
+        log_error "Backup failed!"
+        rm -f /boot/forcefsck
+        rm -f "$backup_file"
+        exit 1
+    fi
+else
+    log_info "Starting dd operation (this will take several minutes)..."
+    log_info "Install 'pv' for progress bar with ETA: sudo apt-get install pv"
+    # Fallback to standard dd with status=progress
+    if ! dd if=/dev/mmcblk0 of="$backup_file" bs=1M conv=fsync status=progress 2>&1; then
+        log_error "dd command failed!"
+        rm -f /boot/forcefsck
+        rm -f "$backup_file"
+        exit 1
+    fi
 fi
 
 end_time=$(date +%s)
 duration=$((end_time - start_time))
 duration_min=$((duration / 60))
 duration_sec=$((duration % 60))
-log_info "dd completed in ${duration_min}m ${duration_sec}s"
+log_info "Backup completed in ${duration_min}m ${duration_sec}s"
 
 # Remove fsck trigger
 rm -f /boot/forcefsck
