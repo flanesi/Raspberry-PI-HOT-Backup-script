@@ -21,7 +21,7 @@ Sistema completo e automatico per creare backup della scheda SD del Raspberry Pi
 
 ## 🎯 Auto-Espansione
 
-> **⭐ Passa facilmente a SD card più grandi (o più piccole) senza configurazione manuale!**
+> **⭐ Passa facilmente a SD card più grandi(o più piccole) senza configurazione manuale!**
 
 Quando ripristini un backup ridotto, il sistema si **espande automaticamente** al primo boot per utilizzare tutto lo spazio disponibile sulla SD.
 
@@ -34,7 +34,7 @@ Quando ripristini un backup ridotto, il sistema si **espande automaticamente** a
 └─────────────────────────────────────────────────────────────┘
 ```
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────┐																	 
 │ Backup di SD 16GB → Ridotto a 3.5GB                         │
 │ Ripristino su SD 8GB → Espansione automatica a 8GB          │
 └─────────────────────────────────────────────────────────────┘
@@ -67,6 +67,10 @@ Quando ripristini un backup ridotto, il sistema si **espande automaticamente** a
 - Pacchetti richiesti (installazione automatica):
   ```bash
   parted e2fsprogs
+  ```
+- Pacchetto opzionale (per barra progresso con ETA):
+  ```bash
+  pv  # Installa con: sudo apt-get install pv
   ```
 
 ## 🚀 Installazione Rapida
@@ -127,6 +131,16 @@ which pishrink
 sudo system_backup [percorso_backup] [giorni_retention]
 ```
 
+### Help
+
+```bash
+# Mostra guida rapida
+sudo system_backup --help
+
+# Mostra versione
+sudo system_backup --version
+```
+
 ### Esempi
 
 ```bash
@@ -165,9 +179,10 @@ sudo system_backup /mnt/backup 28
 [INFO] Space check OK: 120GB available (32GB recommended)
 
 [INFO] Creating Backup
-[INFO] Starting dd operation...
-15728640000 bytes (16 GB) copied, 580 s, 27.1 MB/s
-[INFO] dd completed in 9m 40s
+[INFO] Starting backup with progress bar (ETA displayed)...
+7.2GiB 0:04:23 [27.8MiB/s] [============>           ] 45% ETA 0:05:12
+
+[INFO] Backup completed in 9m 40s
 
 [INFO] Resizing Image
 [INFO] Original size: 15G
@@ -175,6 +190,8 @@ sudo system_backup /mnt/backup 28
 
 [INFO] Backup completed successfully!
 ```
+
+> 💡 **Nota**: Se `pv` è installato, vedrai una barra di progresso con percentuale, velocità e **tempo rimanente stimato (ETA)**. Altrimenti verrà usato il progresso standard di `dd`.
 
 ## 🌐 Configurazione NAS - Disco USB
 
