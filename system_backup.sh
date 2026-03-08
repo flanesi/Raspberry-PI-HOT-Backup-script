@@ -7,21 +7,21 @@
 # Automates full SD card backup with safety checks and intelligent retention
 #
 # AUTHOR: Based on Kristofer Källsbo's work, enhanced by Flavio Anesi
-# VERSION: 1.0.1
-# DATE: March 7, 2026
+# VERSION: 1.0.2
+# DATE: March 8, 2026
 #
 # =====================================================
 # SYNTAX
 # =====================================================
 #
-# system_backup.sh [backup_path] [retention_days]
+# system_backup.sh [backup_path] [retention_count]
 #
 # PARAMETERS:
 #   backup_path      Path where backups will be saved (must be a mount point)
 #                    Default: /mnt/backup
 #
-#   retention_days   Number of days to keep old backups
-#                    Backups older than this will be deleted
+#   retention_count  Number of most recent backups to keep
+#                    Older backups beyond this count will be deleted
 #                    Default: 3
 #
 # =====================================================
@@ -29,37 +29,37 @@
 # =====================================================
 #
 # backup_path      = /mnt/backup
-# retention_days   = 3
+# retention_count  = 3 (keep the 3 most recent backups)
 # resize           = 1 (enabled - uses pishrink to reduce image size)
 #
 # =====================================================
 # USAGE EXAMPLES
 # =====================================================
 #
-# 1. Use all defaults (backup to /mnt/backup, keep 3 days)
+# 1. Use all defaults (backup to /mnt/backup, keep 3 most recent)
 #    sudo system_backup.sh
 #
-# 2. Specify backup path only (use default 3 days retention)
+# 2. Specify backup path only (use default 3 backups retention)
 #    sudo system_backup.sh /mnt/nas-backup
 #
-# 3. Specify both path and retention
+# 3. Specify both path and retention count
 #    sudo system_backup.sh /mnt/backup 7
 #
-# 4. Weekly backup with long retention
-#    sudo system_backup.sh /mnt/weekly-backup 28
+# 4. Weekly backup keeping last 4
+#    sudo system_backup.sh /mnt/weekly-backup 4
 #
-# 5. Daily backup to USB drive
+# 5. Daily backup to USB drive, keep last 7
 #    sudo system_backup.sh /media/usb-disk 7
 #
 # =====================================================
 # CRON EXAMPLES
 # =====================================================
 #
-# Daily backup at 2:00 AM, keep 7 days:
+# Daily backup at 2:00 AM, keep last 7 backups:
 #   0 2 * * * /usr/local/bin/system_backup /mnt/backup 7 >> /var/log/backup_cron.log 2>&1
 #
-# Weekly backup on Sunday at 3:00 AM, keep 4 weeks:
-#   0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 28 >> /var/log/backup_cron.log 2>&1
+# Weekly backup on Sunday at 3:00 AM, keep last 4 backups:
+#   0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 4 >> /var/log/backup_cron.log 2>&1
 #
 # =====================================================
 # INSTALLATION
@@ -109,7 +109,7 @@ set -o pipefail  # Exit on pipe failures
 # CONFIGURATION
 # =====================================================
 backup_path=/mnt/backup
-retention_days=3
+retention_count=3
 resize=1
 MIN_EXPECTED_BACKUPS=0  # Minimo numero di backup che devono esistere (0 per il primo backup)
 
@@ -118,10 +118,10 @@ MIN_EXPECTED_BACKUPS=0  # Minimo numero di backup che devono esistere (0 per il 
 # =====================================================
 show_help() {
     cat << EOF
-Raspberry Pi System Backup Script v1.0.1
+Raspberry Pi System Backup Script v1.0.2
 
 USAGE:
-    sudo system_backup [BACKUP_PATH] [RETENTION_DAYS]
+    sudo system_backup [BACKUP_PATH] [RETENTION_COUNT]
 
 DESCRIPTION:
     Creates a complete backup of the Raspberry Pi SD card while the system
@@ -133,23 +133,24 @@ PARAMETERS:
                       Default: /mnt/backup
                       Example: /mnt/nas-backup, /media/usb-backup
 
-    RETENTION_DAYS    Number of days to keep old backups
-                      Backups older than this will be deleted automatically
-                      Default: 3 days
-                      Recommended: 7 days (1 week)
+    RETENTION_COUNT   Number of most recent backups to keep.
+                      Backups beyond this count will be deleted automatically,
+                      regardless of their age.
+                      Default: 3
+                      Recommended: 7 (keep last 7 backups)
 
 EXAMPLES:
-    # Use default settings (backup to /mnt/backup, keep 3 days)
+    # Use default settings (backup to /mnt/backup, keep last 3 backups)
     sudo system_backup
 
-    # Backup to custom location with 7 days retention
+    # Backup to custom location keeping last 7 backups
     sudo system_backup /mnt/nas-backup 7
 
-    # Backup to USB drive with 14 days retention
+    # Backup to USB drive keeping last 14 backups
     sudo system_backup /media/usb-backup 14
 
-    # Weekly backup with 28 days retention (4 weeks)
-    sudo system_backup /mnt/weekly-backup 28
+    # Weekly backup keeping last 4 backups
+    sudo system_backup /mnt/weekly-backup 4
 
 FEATURES:
     • HOT backup - No need to shutdown the system
@@ -168,10 +169,10 @@ REQUIREMENTS:
     • Optional: pv (for progress bar with ETA)
 
 SPACE REQUIREMENTS:
-    Without pishrink:  SD card size × retention days
-    With pishrink:     ~4GB × retention days (for 16GB SD)
+    Without pishrink:  SD card size × retention count
+    With pishrink:     ~4GB × retention count (for 16GB SD)
     
-    Example for 16GB SD, 7 days retention:
+    Example for 16GB SD, keeping 7 backups:
     • Without resize: ~112GB (16GB × 7)
     • With resize:    ~28GB (4GB × 7)
 
@@ -185,7 +186,7 @@ INSTALLATION:
 MORE INFO:
     Documentation:  See manual.txt for complete guide
     Repository:     https://github.com/flanesi/Raspberry-PI-HOT-Backup-script
-    Version:        1.0.1
+    Version:        1.0.2
     Author:         Based on Kristofer Källsbo's work, enhanced by Flavio Anesi
 
 EOF
@@ -193,8 +194,8 @@ EOF
 }
 
 show_version() {
-    echo "Raspberry Pi System Backup Script v1.0.1"
-    echo "March 7, 2026"
+    echo "Raspberry Pi System Backup Script v1.0.2"
+    echo "March 8, 2026"
     echo ""
     echo "Based on: Kristofer Källsbo's BASH-RaspberryPI-System-Backup"
     echo "Enhanced by: Flavio Anesi"
@@ -202,16 +203,40 @@ show_version() {
     exit 0
 }
 
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
 log_info() {
-    echo "[INFO $(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo -e "${CYAN}[INFO $(date '+%Y-%m-%d %H:%M:%S')]${NC} $*"
 }
 
 log_error() {
-    echo "[ERROR $(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+    echo -e "${RED}[ERROR $(date '+%Y-%m-%d %H:%M:%S')] $*${NC}" >&2
 }
 
 log_warning() {
-    echo "[WARNING $(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo -e "${YELLOW}[WARNING $(date '+%Y-%m-%d %H:%M:%S')] $*${NC}"
+}
+
+log_section() {
+    echo -e ""
+    echo -e "${BOLD}${GREEN}==========================================${NC}"
+    echo -e "${BOLD}${GREEN}  $*${NC}"
+    echo -e "${BOLD}${GREEN}==========================================${NC}"
+    echo -e ""
+}
+
+log_success() {
+    echo -e "${CYAN}[INFO $(date '+%Y-%m-%d %H:%M:%S')]${NC} ${GREEN}✓${NC} $*"
+}
+
+log_fail() {
+    echo -e "${CYAN}[INFO $(date '+%Y-%m-%d %H:%M:%S')]${NC} ${RED}✗${NC} $*"
 }
 
 cleanup_on_error() {
@@ -241,15 +266,13 @@ if [ ! -z "${1:-}" ]; then
 fi
 
 if [ ! -z "${2:-}" ]; then
-    retention_days="$2"
+    retention_count="$2"
 fi
 
 # =====================================================
 # PRE-FLIGHT CHECKS
 # =====================================================
-log_info "=========================================="
-log_info "Raspberry Pi System Backup Starting"
-log_info "=========================================="
+log_section "Raspberry Pi System Backup Starting"
 
 # Check 1: Root privileges
 if [[ $EUID -ne 0 ]]; then
@@ -272,7 +295,7 @@ fi
 log_info "Configuration:"
 log_info "  Hostname: $HOSTNAME"
 log_info "  Backup path: $backup_path"
-log_info "  Retention: $retention_days days"
+log_info "  Retention: keep last $retention_count backup(s)"
 log_info "  Resize enabled: $resize"
 
 # Check 3: Verify backup path exists
@@ -385,9 +408,7 @@ fi
 # BACKUP CREATION
 # =====================================================
 log_info ""
-log_info "=========================================="
-log_info "Creating Backup"
-log_info "=========================================="
+log_section "Creating Backup"
 
 # Create fsck trigger
 touch /boot/forcefsck
@@ -475,51 +496,51 @@ log_info "Backup created successfully: $(ls -lh "$backup_file" | awk '{print $5}
 # OLD BACKUP DELETION
 # =====================================================
 log_info ""
-log_info "=========================================="
-log_info "Checking Old Backups"
-log_info "=========================================="
+log_section "Checking Old Backups"
 
-log_info "Looking for backups older than $retention_days days..."
+log_info "Retention policy: keep last $retention_count backup(s)"
 
-# Find old backups (safely with quotes and maxdepth)
-old_backups=$(find "$backup_path" -maxdepth 1 -name "$HOSTNAME.*.img*" -mtime +$retention_days -type f 2>/dev/null || echo "")
+# List all backups sorted by modification time, newest first
+all_backups=$(find "$backup_path" -maxdepth 1 -name "$HOSTNAME.*.img*" -type f 2>/dev/null \
+    | xargs ls -t 2>/dev/null || echo "")
 
-if [ -z "$old_backups" ]; then
-    log_info "No old backups to delete."
+total_count=$(echo "$all_backups" | grep -c "^" 2>/dev/null || echo 0)
+log_info "Total backups currently on disk: $total_count"
+
+if [ $total_count -le $retention_count ]; then
+    log_info "No old backups to delete (have $total_count, limit is $retention_count)."
 else
-    # Count and list
-    delete_count=$(echo "$old_backups" | wc -l)
-    log_info "Found $delete_count backup(s) to delete:"
-    
+    # Backups to delete = all lines after the first $retention_count
+    old_backups=$(echo "$all_backups" | tail -n +$((retention_count + 1)))
+    delete_count=$(echo "$old_backups" | grep -c "^" 2>/dev/null || echo 0)
+
+    log_info "Found $delete_count backup(s) to delete (keeping newest $retention_count):"
     echo "$old_backups" | while read -r file; do
         if [ -f "$file" ]; then
-            file_age=$(find "$file" -mtime +$retention_days -printf '%Td days old\n' 2>/dev/null)
-            log_info "  - $(basename "$file") ($(ls -lh "$file" | awk '{print $5}'), $file_age)"
+            log_info "  - $(basename "$file") ($(ls -lh "$file" | awk '{print $5}'))"
         fi
     done
-    
-    # Safety check: verify we'll still have backups after deletion
-    total_after_deletion=$((existing_count + 1 - delete_count))
-    
-    if [ $total_after_deletion -lt 1 ]; then
+
+    # Safety check: we must always keep at least 1 backup
+    remaining=$((total_count - delete_count))
+    if [ $remaining -lt 1 ]; then
         log_warning "SAFETY ABORT: Deletion would leave 0 backups!"
         log_warning "Keeping old backups for safety."
     else
-        log_info "After deletion, there will be $total_after_deletion backup(s) remaining."
+        log_info "After deletion, there will be $remaining backup(s) remaining."
         log_info "Proceeding with deletion..."
-        
-        # Delete one by one with confirmation
+
         echo "$old_backups" | while read -r file; do
             if [ -f "$file" ]; then
                 log_info "Deleting: $(basename "$file")"
                 if rm -f "$file"; then
-                    log_info "  ✓ Deleted successfully"
+                    log_success "Deleted successfully"
                 else
-                    log_error "  ✗ Failed to delete"
+                    log_fail "Failed to delete"
                 fi
             fi
         done
-        
+
         log_info "Old backup deletion completed."
     fi
 fi
@@ -528,10 +549,7 @@ fi
 # IMAGE RESIZE
 # =====================================================
 if [ $resize -eq 1 ]; then
-    log_info ""
-    log_info "=========================================="
-    log_info "Resizing Image"
-    log_info "=========================================="
+    log_section "Resizing Image"
     
     original_size=$(ls -lh "$backup_file" | awk '{print $5}')
     log_info "Original size: $original_size"
@@ -550,9 +568,7 @@ fi
 # FINAL SUMMARY
 # =====================================================
 log_info ""
-log_info "=========================================="
-log_info "Backup Summary"
-log_info "=========================================="
+log_section "Backup Summary"
 
 final_backups=$(find "$backup_path" -maxdepth 1 -name "$HOSTNAME.*.img*" -type f 2>/dev/null)
 final_count=$(echo "$final_backups" | grep -c "^" 2>/dev/null || echo 0)
@@ -569,7 +585,6 @@ if [ -n "$final_backups" ]; then
 fi
 
 log_info ""
-log_info "Backup completed successfully at $(date)"
-log_info "=========================================="
+log_success "Backup completed successfully at $(date)"
 
 exit 0

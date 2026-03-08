@@ -2,6 +2,17 @@
 
 All notable changes to Raspberry PI HOT Backup Script will be documented in this file.
 
+## [1.0.2] - 2026-03-08
+
+### Changed
+- **Retention logic**: Changed from time-based (days) to **count-based** retention. The second parameter now specifies how many recent backups to keep, regardless of their age. For example, `retention_count=3` always keeps the 3 most recent backups and deletes any older ones.
+- Renamed internal variable `retention_days` → `retention_count` for clarity
+- Updated all log messages to reflect count-based retention policy
+- Updated `--help` output and header comments to document the new behaviour
+
+### Migration note
+If you had cron jobs using the old day-based parameter (e.g. `system_backup /mnt/backup 7` meaning "7 days"), the number you pass now means "keep last N backups". For daily backups the number stays the same conceptually; just be aware the semantics have changed.
+
 ## [1.0.1] - 2026-03-07
 
 ### Added
@@ -50,5 +61,6 @@ All notable changes to Raspberry PI HOT Backup Script will be documented in this
 
 ## Version History
 
+- **v1.0.2** (2026-03-08) - Count-based retention (keep last N backups instead of N days)
 - **v1.0.1** (2026-03-07) - Added ETA support with pv, --help and --version commands
 - **v1.0.0** (2025-02-08) - Initial stable release

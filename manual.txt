@@ -213,10 +213,10 @@ FUNZIONAMENTO DETTAGLIATO
    • Esegue sync per assicurare scrittura su disco
 
 4. GESTIONE RETENTION
-   • Cerca backup più vecchi del periodo di retention
-   • Lista i file da cancellare
-   • Verifica che rimarrà almeno 1 backup
-   • Cancella i file vecchi in modo sicuro
+   • Ordina tutti i backup per data (più recente prima)
+   • Mantiene i primi N (retention_count) backup
+   • Cancella tutti i backup oltre il limite, indipendentemente dalla loro età
+   • Verifica che rimanga almeno 1 backup prima di cancellare
 
 5. RIDUZIONE DIMENSIONI (opzionale)
    • Se pishrink è installato, riduce l'immagine
@@ -235,15 +235,14 @@ CARATTERISTICHE DI SICUREZZA
 
 PARAMETRI
 ---------
-$1 = backup_path     → Percorso dove salvare (default: /mnt/backup)
-$2 = retention_days  → Giorni da mantenere (default: 3)
+$1 = backup_path      → Percorso dove salvare (default: /mnt/backup)
+$2 = retention_count  → Numero di backup recenti da mantenere (default: 3)
 
 VALORI DI DEFAULT
 -----------------
 backup_path      = /mnt/backup
-retention_days   = 3 giorni
+retention_count  = 3 (tieni gli ultimi 3 backup)
 resize           = 1 (abilitato)
-MIN_EXPECTED     = 0 (per il primo backup)
 
 DIMENSIONI TIPICHE
 ------------------
@@ -596,7 +595,7 @@ PROBLEMI COMUNI
 
 SINTASSI BASE
 -------------
-sudo system_backup [percorso_backup] [giorni_retention]
+sudo system_backup [percorso_backup] [retention_count]
 
 COMANDI HELP
 ------------
@@ -613,7 +612,9 @@ sudo system_backup version
 PARAMETRI
 ---------
 percorso_backup    → Dove salvare i backup (default: /mnt/backup)
-giorni_retention   → Giorni da mantenere i backup (default: 3)
+retention_count    → Quanti backup recenti mantenere (default: 3)
+                     I backup più vecchi oltre questo limite vengono
+                     eliminati automaticamente, indipendentemente dall'età.
 
 ESEMPI DI UTILIZZO
 ------------------
@@ -621,27 +622,27 @@ ESEMPI DI UTILIZZO
 # Esempio 1: Usa tutti i default
 sudo system_backup
 # Backup in: /mnt/backup
-# Retention: 3 giorni
+# Retention: tieni ultimi 3 backup
 
 # Esempio 2: Specifica solo il percorso
 sudo system_backup /mnt/nas-backup
 # Backup in: /mnt/nas-backup
-# Retention: 3 giorni (default)
+# Retention: tieni ultimi 3 backup (default)
 
-# Esempio 3: Specifica percorso e retention
+# Esempio 3: Specifica percorso e numero di backup
 sudo system_backup /mnt/backup 7
 # Backup in: /mnt/backup
-# Retention: 7 giorni (1 settimana)
+# Retention: tieni ultimi 7 backup
 
-# Esempio 4: Backup settimanale con retention lunga
-sudo system_backup /mnt/backup 28
+# Esempio 4: Backup settimanale, tieni gli ultimi 4
+sudo system_backup /mnt/backup 4
 # Backup in: /mnt/backup
-# Retention: 28 giorni (4 settimane)
+# Retention: tieni ultimi 4 backup
 
-# Esempio 5: Backup su disco USB
+# Esempio 5: Backup su disco USB, tieni ultimi 14
 sudo system_backup /media/usb-disk 14
 # Backup in: /media/usb-disk
-# Retention: 14 giorni (2 settimane)
+# Retention: tieni ultimi 14 backup
 
 COSA SUCCEDE DURANTE L'ESECUZIONE
 ----------------------------------
@@ -668,8 +669,10 @@ COSA SUCCEDE DURANTE L'ESECUZIONE
 
 4. Verifica e cancella vecchi:
    [INFO] Checking Old Backups
-   [INFO] Found 1 backup(s) to delete
-   [INFO] Deleting: raspberry-pi.20250201.img
+   [INFO] Retention policy: keep last 7 backup(s)
+   [INFO] Total backups currently on disk: 8
+   [INFO] Found 1 backup(s) to delete (keeping newest 7)
+   [INFO] Deleting: raspberry-pi.20250201_120000.img
    [INFO] ✓ Deleted successfully
 
 5. Riduce dimensioni (se pishrink installato):
@@ -709,7 +712,7 @@ QUANTO SPAZIO OCCUPANO
 -----------------------
 • Senza pishrink: ~16GB per backup (SD 16GB)
 • Con pishrink: ~3-4GB per backup
-• Con retention 7 giorni: 7 × 3-4GB = ~21-28GB
+• Tenendo 7 backup: 7 × 3-4GB = ~21-28GB
 
 MODIFICARE I DEFAULT
 --------------------
@@ -719,7 +722,7 @@ sudo nano /var/www/MyScripts/system_backup.sh
 
 Trova queste righe (circa riga 115):
 backup_path=/mnt/backup        → Cambia il percorso default
-retention_days=3                → Cambia i giorni default
+retention_count=3               → Cambia il numero di backup da mantenere
 resize=1                        → 0 = disabilita pishrink
 
 Salva e chiudi (Ctrl+X, Y, Invio)
@@ -893,19 +896,19 @@ sudo crontab -l
 ESEMPI CONFIGURAZIONE CRON
 ---------------------------
 
-# Backup giornaliero alle 2:00 AM, mantieni 7 giorni
+# Backup giornaliero alle 2:00 AM, tieni ultimi 7 backup
 0 2 * * * /usr/local/bin/system_backup /mnt/backup 7
 
-# Backup giornaliero alle 3:00 AM, mantieni 14 giorni
+# Backup giornaliero alle 3:00 AM, tieni ultimi 14 backup
 0 3 * * * /usr/local/bin/system_backup /mnt/backup 14
 
-# Backup settimanale ogni domenica alle 3:00 AM, mantieni 4 settimane
-0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 28
+# Backup settimanale ogni domenica alle 3:00 AM, tieni ultimi 4 backup
+0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 4
 
-# Backup mensile il primo giorno del mese alle 4:00 AM, mantieni 6 mesi
-0 4 1 * * /usr/local/bin/system_backup /mnt/backup 180
+# Backup mensile il primo giorno del mese alle 4:00 AM, tieni ultimi 6
+0 4 1 * * /usr/local/bin/system_backup /mnt/backup 6
 
-# Due backup al giorno (mattina e sera)
+# Due backup al giorno (mattina e sera), tieni ultimi 3 per ciascuno
 0 2 * * * /usr/local/bin/system_backup /mnt/backup/morning 3
 0 22 * * * /usr/local/bin/system_backup /mnt/backup/evening 3
 
@@ -914,25 +917,25 @@ STRATEGIE DI BACKUP RACCOMANDATE
 
 STRATEGIA 1: Base (uso domestico)
 ----------------------------------
-Backup giornaliero con retention 7 giorni:
+Backup giornaliero, tieni ultimi 7:
 
 0 2 * * * /usr/local/bin/system_backup /mnt/backup 7
 
 Spazio richiesto: ~28GB (7 × 4GB)
-Protezione: ultima settimana
+Protezione: ultimo backup per ogni giorno della settimana
 
 STRATEGIA 2: Professionale
 ---------------------------
 Backup giornaliero + settimanale:
 
-# Giornaliero alle 2:00 AM, mantieni 7 giorni
-0 2 * * 1-6 /usr/local/bin/system_backup /mnt/backup/daily 7
+# Giornaliero alle 2:00 AM (lun-sab), tieni ultimi 6
+0 2 * * 1-6 /usr/local/bin/system_backup /mnt/backup/daily 6
 
-# Settimanale domenica alle 3:00 AM, mantieni 4 settimane
-0 3 * * 0 /usr/local/bin/system_backup /mnt/backup/weekly 28
+# Settimanale domenica alle 3:00 AM, tieni ultimi 4
+0 3 * * 0 /usr/local/bin/system_backup /mnt/backup/weekly 4
 
 Spazio richiesto: ~40GB
-Protezione: 7 giorni granularità giornaliera + 4 settimane
+Protezione: 6 backup giornalieri + 4 settimanali
 
 STRATEGIA 3: Massima sicurezza (3-2-1 rule)
 --------------------------------------------
@@ -1588,7 +1591,7 @@ In caso di problemi non risolti da questa guida:
 VERSIONE DOCUMENTO
 ================================================================================
 
-Versione: 1.0.1
+Versione: 1.0.2
 Data: Marzo 2026
 Autore: Documentazione completa per system_backup.sh e pishrink.sh
 

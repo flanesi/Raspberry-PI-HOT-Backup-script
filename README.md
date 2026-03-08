@@ -128,7 +128,7 @@ which pishrink
 ### Sintassi
 
 ```bash
-sudo system_backup [percorso_backup] [giorni_retention]
+sudo system_backup [percorso_backup] [retention_count]
 ```
 
 ### Help
@@ -144,17 +144,17 @@ sudo system_backup --version
 ### Esempi
 
 ```bash
-# Usa valori di default (/mnt/backup, 3 giorni)
+# Usa valori di default (/mnt/backup, tieni gli ultimi 3 backup)
 sudo system_backup
 
 # Specifica percorso
 sudo system_backup /mnt/nas-backup
 
-# Specifica percorso e retention
+# Specifica percorso e numero di backup da mantenere
 sudo system_backup /mnt/backup 7
 
-# Backup settimanale con retention lunga
-sudo system_backup /mnt/backup 28
+# Backup settimanale, tieni gli ultimi 4
+sudo system_backup /mnt/backup 4
 ```
 
 ### Cosa Succede Durante l'Esecuzione
@@ -167,7 +167,7 @@ sudo system_backup /mnt/backup 28
 [INFO]   Space required: 16GB (minimum)
 [INFO]   Space recommended: 32GB (for retention)
 [INFO]   Backup path: /mnt/backup
-[INFO]   Retention: 7 days
+[INFO]   Retention: keep last 7 backup(s)
 
 [INFO] Testing write access...           ✓
 [INFO] Testing mount responsiveness...   ✓
@@ -262,14 +262,14 @@ sudo crontab -e
 ### Esempi di Configurazione
 
 ```bash
-# Backup giornaliero alle 2:00 AM, mantieni 7 giorni
+# Backup giornaliero alle 2:00 AM, tieni gli ultimi 7 backup
 0 2 * * * /usr/local/bin/system_backup /mnt/backup 7
 
-# Backup settimanale (domenica) alle 3:00 AM, mantieni 4 settimane
-0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 28
+# Backup settimanale (domenica) alle 3:00 AM, tieni gli ultimi 4 backup
+0 3 * * 0 /usr/local/bin/system_backup /mnt/backup 4
 
-# Backup mensile (primo giorno del mese), mantieni 6 mesi
-0 4 1 * * /usr/local/bin/system_backup /mnt/backup 180
+# Backup mensile (primo giorno del mese), tieni gli ultimi 6 backup
+0 4 1 * * /usr/local/bin/system_backup /mnt/backup 6
 ```
 
 ## 📚 Esempi Pratici
@@ -289,7 +289,7 @@ sudo bash install.sh
 # 3. Test backup
 sudo system_backup /mnt/backup 7
 
-# 4. Automatizza
+# 4. Automatizza (tieni gli ultimi 7 backup)
 echo "0 2 * * * /usr/local/bin/system_backup /mnt/backup 7" | sudo crontab -
 ```
 
@@ -361,7 +361,7 @@ Il tempo può variare a seconda del modello di Raspberry utilizzato e della velo
 
 - **Senza pishrink**: ~16GB (dimensione SD)
 - **Con pishrink**: ~3-4GB (60-80% di risparmio)
-- **Con retention 7 giorni**: ~28GB totali (7 × 4GB)
+- **Tenendo 7 backup**: ~28GB totali (7 × 4GB)
 
 ### Posso ripristinare su SD di dimensione diversa?
 
