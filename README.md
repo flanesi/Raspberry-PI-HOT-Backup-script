@@ -79,6 +79,7 @@ Quando ripristini un backup ridotto, il sistema si **espande automaticamente** a
 
 ```bash
 # 1. Clona il repository
+cd /home/pi
 git clone https://github.com/flanesi/Raspberry-PI-HOT-Backup-script.git
 cd Raspberry-PI-HOT-Backup-script
 
@@ -93,6 +94,7 @@ system_backup --help
 
 ```bash
 # 1. Scarica l'archivio
+cd /home/pi
 wget https://github.com/flanesi/Raspberry-PI-HOT-Backup-script/archive/main.zip
 unzip main.zip
 cd Raspberry-PI-HOT-Backup-script-main
